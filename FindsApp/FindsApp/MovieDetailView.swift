@@ -44,6 +44,12 @@ struct MovieDetailView: View {
 
     private var isWatched: Bool {
         guard let profile = authVM.user else { return false }
+        // Check typed entries first, then legacy
+        if let entries = profile.watchedEntries as [WatchedEntry]? {
+            if entries.contains(where: { $0.id == movie.id && $0.type == (movie.mediaType ?? "movie") }) {
+                return true
+            }
+        }
         return profile.watchedIDs.contains(movie.id)
     }
 
@@ -53,14 +59,9 @@ struct MovieDetailView: View {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .empty:
-                        ZStack {
-                            Color(.tertiarySystemFill)
-                            ProgressView()
-                        }
+                        ZStack { Color(.tertiarySystemFill); ProgressView() }
                     case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFit()
+                        image.resizable().scaledToFit()
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     case .failure:
                         placeholder
@@ -71,8 +72,7 @@ struct MovieDetailView: View {
                 .frame(maxWidth: .infinity)
             } else if !movie.posterName.isEmpty {
                 Image(movie.posterName)
-                    .resizable()
-                    .scaledToFit()
+                    .resizable().scaledToFit()
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             } else {
                 placeholder
@@ -82,25 +82,19 @@ struct MovieDetailView: View {
 
     private var titleSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(movie.title)
-                .font(.title2).bold()
+            Text(movie.title).font(.title2).bold()
             HStack(spacing: 8) {
-                if movie.year > 0 {
-                    Text(String(movie.year))
-                }
+                if movie.year > 0 { Text(String(movie.year)) }
                 if movie.rating > 0 {
                     let percent = Int(round(movie.rating * 20))
-                    Text("\(percent)%")
-                        .font(.subheadline.weight(.semibold))
+                    Text("\(percent)%").font(.subheadline.weight(.semibold))
                         .foregroundStyle(ScoreColor.color(for: percent))
                 }
                 if let runtime = movie.durationMinutes {
-                    Label("\(runtime) min", systemImage: "clock")
-                        .symbolRenderingMode(.hierarchical)
+                    Label("\(runtime) min", systemImage: "clock").symbolRenderingMode(.hierarchical)
                 }
             }
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
+            .font(.subheadline).foregroundStyle(.secondary)
         }
     }
 
@@ -129,7 +123,8 @@ struct MovieDetailView: View {
             .disabled(authVM.user == nil)
 
             Button {
-                Task { await authVM.toggleWatched(movieID: movie.id) }
+                let type = movie.mediaType ?? "movie"
+                Task { await authVM.toggleWatched(movieID: movie.id, type: type) }
             } label: {
                 Label(isWatched ? "Watched" : "Mark as Watched",
                       systemImage: isWatched ? "checkmark.circle.fill" : "checkmark.circle")
@@ -145,12 +140,9 @@ struct MovieDetailView: View {
 
     private var metaSection: some View {
         let readableGenres: [String] = movie.genres.map { token in
-            if token.hasPrefix("#"), let id = Int(token.dropFirst()) {
-                return "#\(id)"
-            }
+            if token.hasPrefix("#"), let id = Int(token.dropFirst()) { return "#\(id)" }
             return token
         }
-
         return Group {
             if !readableGenres.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -175,9 +167,7 @@ struct MovieDetailView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 240)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            Image(systemName: "film")
-                .font(.system(size: 40))
-                .foregroundStyle(.secondary)
+            Image(systemName: "film").font(.system(size: 40)).foregroundStyle(.secondary)
         }
     }
 }
@@ -192,10 +182,12 @@ struct MovieDetailView: View {
         rating: 4.2,
         summary: "This is a sample overview for the movie. It provides a brief description of the plot.",
         posterURL: URL(string: "https://image.tmdb.org/t/p/w500/abc123.jpg"),
-        durationMinutes: 123
+        durationMinutes: 123,
+        mediaType: "movie"
     )
     return NavigationStack {
         MovieDetailView(movie: sample)
             .environmentObject(AuthViewModel())
     }
 }
+

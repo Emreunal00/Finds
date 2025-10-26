@@ -10,6 +10,8 @@ struct Movie: Identifiable, Equatable, Codable {
     var summary: String
     var posterURL: URL?
     var durationMinutes: Int?
+    // NEW: mediaType ("movie" or "tv")
+    var mediaType: String?
 
     init(
         id: Int,
@@ -20,7 +22,8 @@ struct Movie: Identifiable, Equatable, Codable {
         rating: Double = 0.0,
         summary: String = "",
         posterURL: URL? = nil,
-        durationMinutes: Int? = nil
+        durationMinutes: Int? = nil,
+        mediaType: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -31,5 +34,7 @@ struct Movie: Identifiable, Equatable, Codable {
         self.summary = summary
         self.posterURL = posterURL
         self.durationMinutes = durationMinutes
+        self.mediaType = mediaType
     }
 }
+

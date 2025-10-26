@@ -1,15 +1,22 @@
 import Foundation
 import FirebaseFirestore
 
+struct WatchedEntry: Codable, Equatable {
+    let id: Int
+    let type: String // "movie" or "tv"
+}
+
 struct UserProfile: Codable, Identifiable, Equatable {
-    var id: String? // Firebase Auth uid
+    var id: String?
     var email: String
     var displayName: String?
     var photoURL: String?
     var createdAt: Date
     var watchlistIDs: [Int]
-    var watchedIDs: [Int]
+    var watchedIDs: [Int]            // legacy support
     var favoritesIDs: [Int]
+    // NEW: typed watched entries
+    var watchedEntries: [WatchedEntry]
 
     init(id: String? = nil,
          email: String,
@@ -18,7 +25,8 @@ struct UserProfile: Codable, Identifiable, Equatable {
          createdAt: Date = Date(),
          watchlistIDs: [Int] = [],
          watchedIDs: [Int] = [],
-         favoritesIDs: [Int] = []) {
+         favoritesIDs: [Int] = [],
+         watchedEntries: [WatchedEntry] = []) {
         self.id = id
         self.email = email
         self.displayName = displayName
@@ -27,6 +35,7 @@ struct UserProfile: Codable, Identifiable, Equatable {
         self.watchlistIDs = watchlistIDs
         self.watchedIDs = watchedIDs
         self.favoritesIDs = favoritesIDs
+        self.watchedEntries = watchedEntries
     }
 }
 
@@ -39,7 +48,8 @@ extension UserProfile {
                     createdAt: Date(),
                     watchlistIDs: [],
                     watchedIDs: [],
-                    favoritesIDs: [])
+                    favoritesIDs: [],
+                    watchedEntries: [])
     }
 }
 
@@ -59,7 +69,8 @@ final class UserProfileRepository {
             "createdAt": createdAtTimestamp,
             "watchlistIDs": profile.watchlistIDs,
             "watchedIDs": profile.watchedIDs,
-            "favoritesIDs": profile.favoritesIDs
+            "favoritesIDs": profile.favoritesIDs,
+            "watchedEntries": profile.watchedEntries.map { ["id": $0.id, "type": $0.type] }
         ].merging(optional: [
             "displayName": profile.displayName,
             "photoURL": profile.photoURL
@@ -107,7 +118,6 @@ final class UserProfileRepository {
             }
         }()
 
-        // Tolerance: if old data used String tokens, try converting them to Int
         func ints(from any: Any?) -> [Int] {
             if let arr = any as? [Int] { return arr }
             if let arr = any as? [String] {
@@ -120,6 +130,24 @@ final class UserProfileRepository {
         let watchedIDs = ints(from: dict["watchedIDs"])
         let favoritesIDs = ints(from: dict["favoritesIDs"])
 
+        let watchedEntries: [WatchedEntry] = {
+            if let arr = dict["watchedEntries"] as? [[String: Any]] {
+                return arr.compactMap { m in
+                    if let id = m["id"] as? Int, let type = m["type"] as? String {
+                        return WatchedEntry(id: id, type: type)
+                    } else if let idNum = m["id"] as? NSNumber, let type = m["type"] as? String {
+                        return WatchedEntry(id: idNum.intValue, type: type)
+                    }
+                    return nil
+                }
+            } else if !watchedIDs.isEmpty {
+                // backward compatibility: assume movie
+                return watchedIDs.map { WatchedEntry(id: $0, type: "movie") }
+            } else {
+                return []
+            }
+        }()
+
         return UserProfile(
             id: snapshot.documentID,
             email: email,
@@ -128,13 +156,14 @@ final class UserProfileRepository {
             createdAt: createdAtDate,
             watchlistIDs: watchlistIDs,
             watchedIDs: watchedIDs,
-            favoritesIDs: favoritesIDs
+            favoritesIDs: favoritesIDs,
+            watchedEntries: watchedEntries
         )
     }
 
-    // MARK: - Array field helpers (Int-based)
+    // MARK: - Array field helpers
 
-    private func updateArrayField(uid: String, field: String, add values: [Int]? = nil, remove valuesToRemove: [Int]? = nil) async throws {
+    private func updateArrayField(uid: String, field: String, add values: [Any]? = nil, remove valuesToRemove: [Any]? = nil) async throws {
         var update: [String: Any] = [:]
         if let values { update[field] = FieldValue.arrayUnion(values) }
         if let valuesToRemove { update[field] = FieldValue.arrayRemove(valuesToRemove) }
@@ -165,6 +194,16 @@ final class UserProfileRepository {
         try await updateArrayField(uid: uid, field: "watchlistIDs", remove: [id])
     }
 
+    // NEW: typed watched entries
+    func addToWatched(uid: String, entry: WatchedEntry) async throws {
+        try await updateArrayField(uid: uid, field: "watchedEntries", add: [["id": entry.id, "type": entry.type]])
+    }
+
+    func removeFromWatched(uid: String, entry: WatchedEntry) async throws {
+        try await updateArrayField(uid: uid, field: "watchedEntries", remove: [["id": entry.id, "type": entry.type]])
+    }
+
+    // Backward-compat (not used after migration, but keep)
     func addToWatched(uid: String, id: Int) async throws {
         try await updateArrayField(uid: uid, field: "watchedIDs", add: [id])
     }
@@ -183,3 +222,4 @@ private extension Dictionary where Key == String, Value == Any {
         return result
     }
 }
+

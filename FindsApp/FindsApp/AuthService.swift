@@ -9,12 +9,19 @@ protocol AuthServicing {
     func signOut() throws
     func observeAuthState(_ onChange: @escaping (String?) -> Void) -> Any
     func fetchProfile(uid: String) async throws -> UserProfile
+
+    // NEW: Realtime profile listener
+    func observeProfile(uid: String, onChange: @escaping (Result<UserProfile, Error>) -> Void) -> Any
+    func removeProfileObserver(_ token: Any)
 }
 
 final class AuthService: AuthServicing {
     private let auth: Auth
     private let userRepo: UserProfileRepository
     private var authHandle: AuthStateDidChangeListenerHandle?
+
+    // Keep profile listener handle to remove later if needed
+    private var profileListenerHandle: ListenerRegistration?
 
     init(auth: Auth = Auth.auth(), userRepo: UserProfileRepository = UserProfileRepository()) {
         self.auth = auth
@@ -65,9 +72,82 @@ final class AuthService: AuthServicing {
         try await userRepo.fetch(uid: uid)
     }
 
+    // MARK: - Realtime profile observing
+
+    func observeProfile(uid: String, onChange: @escaping (Result<UserProfile, Error>) -> Void) -> Any {
+        // Remove previous if any
+        profileListenerHandle?.remove()
+
+        let handle = Firestore.firestore()
+            .collection("users")
+            .document(uid)
+            .addSnapshotListener { snapshot, error in
+                if let error {
+                    onChange(.failure(error))
+                    return
+                }
+                guard let snapshot, snapshot.exists else {
+                    onChange(.failure(NSError(domain: "UserProfile", code: 404, userInfo: [NSLocalizedDescriptionKey: "Profile not found"])))
+                    return
+                }
+                do {
+                    // Reuse repository parse logic by building a temporary dict
+                    let dict = snapshot.data() ?? [:]
+                    let email = dict["email"] as? String ?? ""
+                    let displayName = dict["displayName"] as? String
+                    let photoURL = dict["photoURL"] as? String
+                    let createdAtDate: Date = {
+                        if let ts = dict["createdAt"] as? Timestamp {
+                            return ts.dateValue()
+                        } else if let date = dict["createdAt"] as? Date {
+                            return date
+                        } else {
+                            return Date(timeIntervalSince1970: 0)
+                        }
+                    }()
+
+                    func ints(from any: Any?) -> [Int] {
+                        if let arr = any as? [Int] { return arr }
+                        if let arr = any as? [String] {
+                            return arr.compactMap { Int($0.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()) }
+                        }
+                        return []
+                    }
+
+                    let profile = UserProfile(
+                        id: snapshot.documentID,
+                        email: email,
+                        displayName: displayName,
+                        photoURL: photoURL,
+                        createdAt: createdAtDate,
+                        watchlistIDs: ints(from: dict["watchlistIDs"]),
+                        watchedIDs: ints(from: dict["watchedIDs"]),
+                        favoritesIDs: ints(from: dict["favoritesIDs"])
+                    )
+                    onChange(.success(profile))
+                } catch {
+                    onChange(.failure(error))
+                }
+            }
+
+        profileListenerHandle = handle
+        return handle as Any
+    }
+
+    func removeProfileObserver(_ token: Any) {
+        if let handle = token as? ListenerRegistration {
+            handle.remove()
+        }
+        if let handle = profileListenerHandle {
+            handle.remove()
+            profileListenerHandle = nil
+        }
+    }
+
     deinit {
         if let handle = authHandle {
             auth.removeStateDidChangeListener(handle)
         }
+        profileListenerHandle?.remove()
     }
 }
