@@ -90,44 +90,59 @@ final class AuthService: AuthServicing {
                     onChange(.failure(NSError(domain: "UserProfile", code: 404, userInfo: [NSLocalizedDescriptionKey: "Profile not found"])))
                     return
                 }
-                do {
-                    // Reuse repository parse logic by building a temporary dict
-                    let dict = snapshot.data() ?? [:]
-                    let email = dict["email"] as? String ?? ""
-                    let displayName = dict["displayName"] as? String
-                    let photoURL = dict["photoURL"] as? String
-                    let createdAtDate: Date = {
-                        if let ts = dict["createdAt"] as? Timestamp {
-                            return ts.dateValue()
-                        } else if let date = dict["createdAt"] as? Date {
-                            return date
-                        } else {
-                            return Date(timeIntervalSince1970: 0)
-                        }
-                    }()
+                let dict = snapshot.data() ?? [:]
+                let email = dict["email"] as? String ?? ""
+                let displayName = dict["displayName"] as? String
+                let photoURL = dict["photoURL"] as? String
+                let createdAtDate: Date = {
+                    if let ts = dict["createdAt"] as? Timestamp {
+                        return ts.dateValue()
+                    } else if let date = dict["createdAt"] as? Date {
+                        return date
+                    } else {
+                        return Date(timeIntervalSince1970: 0)
+                    }
+                }()
 
-                    func ints(from any: Any?) -> [Int] {
-                        if let arr = any as? [Int] { return arr }
-                        if let arr = any as? [String] {
-                            return arr.compactMap { Int($0.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()) }
+                func ints(from any: Any?) -> [Int] {
+                    if let arr = any as? [Int] { return arr }
+                    if let arr = any as? [String] {
+                        return arr.compactMap { Int($0.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()) }
+                    }
+                    return []
+                }
+
+                // Parse watchedEntries (typed) similar to repository
+                let watchedEntries: [WatchedEntry] = {
+                    if let arr = dict["watchedEntries"] as? [[String: Any]] {
+                        return arr.compactMap { m in
+                            if let id = m["id"] as? Int, let type = m["type"] as? String {
+                                return WatchedEntry(id: id, type: type)
+                            } else if let idNum = m["id"] as? NSNumber, let type = m["type"] as? String {
+                                return WatchedEntry(id: idNum.intValue, type: type)
+                            }
+                            return nil
                         }
+                    } else if let legacy = dict["watchedIDs"] {
+                        let ids = ints(from: legacy)
+                        return ids.map { WatchedEntry(id: $0, type: "movie") }
+                    } else {
                         return []
                     }
+                }()
 
-                    let profile = UserProfile(
-                        id: snapshot.documentID,
-                        email: email,
-                        displayName: displayName,
-                        photoURL: photoURL,
-                        createdAt: createdAtDate,
-                        watchlistIDs: ints(from: dict["watchlistIDs"]),
-                        watchedIDs: ints(from: dict["watchedIDs"]),
-                        favoritesIDs: ints(from: dict["favoritesIDs"])
-                    )
-                    onChange(.success(profile))
-                } catch {
-                    onChange(.failure(error))
-                }
+                let profile = UserProfile(
+                    id: snapshot.documentID,
+                    email: email,
+                    displayName: displayName,
+                    photoURL: photoURL,
+                    createdAt: createdAtDate,
+                    watchlistIDs: ints(from: dict["watchlistIDs"]),
+                    watchedIDs: ints(from: dict["watchedIDs"]),
+                    favoritesIDs: ints(from: dict["favoritesIDs"]),
+                    watchedEntries: watchedEntries
+                )
+                onChange(.success(profile))
             }
 
         profileListenerHandle = handle

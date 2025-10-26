@@ -45,7 +45,7 @@ struct ProfileView: View {
                     .padding(.horizontal)
                     .padding(.top, 4)
                     .onChange(of: selectedTab) { _ in
-                        Task { await loadCurrentList() }
+                        Task { await loadCurrentList(limitToFive: true) }
                     }
 
                     contentSection
@@ -65,8 +65,18 @@ struct ProfileView: View {
                 .padding(.bottom, 16)
             }
             .navigationTitle("Profile")
-            .onAppear { Task { await loadCurrentList() } }
-            .onChange(of: authVM.listsVersion) { _ in Task { await loadCurrentList() } }
+            .onAppear { Task { await loadCurrentList(limitToFive: true) } }
+            .onChange(of: authVM.listsVersion) { _ in Task { await loadCurrentList(limitToFive: true) } }
+            .navigationDestination(for: ListTab.self) { tab in
+                switch tab {
+                case .favorites:
+                    FavoritesListView().environmentObject(authVM)
+                case .watchlist:
+                    WatchlistListView().environmentObject(authVM)
+                case .watched:
+                    WatchedListView().environmentObject(authVM)
+                }
+            }
         }
     }
 
@@ -128,7 +138,7 @@ struct ProfileView: View {
             VStack(spacing: 8) {
                 Text("Failed to load").font(.headline)
                 Text(err).font(.footnote).foregroundStyle(.secondary)
-                Button("Retry") { Task { await loadCurrentList() } }.buttonStyle(.borderedProminent)
+                Button("Retry") { Task { await loadCurrentList(limitToFive: true) } }.buttonStyle(.borderedProminent)
             }
             .frame(maxWidth: .infinity).padding(.horizontal).padding(.top, 8)
         } else if movies.isEmpty {
@@ -146,6 +156,25 @@ struct ProfileView: View {
                     NavigationLink { MovieDetailView(movie: movie) } label: { row(for: movie) }
                         .buttonStyle(.plain)
                     Divider()
+                }
+
+                if showAllButton {
+                    Button {
+                        navPath.append(selectedTab)
+                    } label: {
+                        HStack {
+                            Spacer()
+                            Text("All")
+                                .font(.subheadline.weight(.semibold))
+                            Image(systemName: "chevron.right")
+                                .imageScale(.small)
+                            Spacer()
+                        }
+                        .padding(.vertical, 10)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(selectedTab.tint)
+                    .padding(.vertical, 8)
                 }
             }
             .padding(.horizontal).padding(.top, 8)
@@ -258,7 +287,7 @@ struct ProfileView: View {
     private var emptyTitle: String { emptyTitleText(for: selectedTab) }
     private var emptySubtitle: String { emptySubtitleText(for: selectedTab) }
 
-    private func loadCurrentList() async {
+    private func loadCurrentList(limitToFive: Bool) async {
         errorMessage = nil
         isLoading = true
         defer { isLoading = false }
@@ -267,9 +296,10 @@ struct ProfileView: View {
         case .favorites, .watchlist:
             let ids = currentIDs()
             guard !ids.isEmpty else { movies = []; return }
+            let limitedIDs = limitToFive ? Array(ids.prefix(5)) : ids
             do {
                 let fetched: [Movie] = try await withThrowingTaskGroup(of: (Int, Movie).self) { group in
-                    for id in ids {
+                    for id in limitedIDs {
                         group.addTask {
                             let m = try await service.fetchMovieBasic(id: id)
                             return (id, m)
@@ -278,7 +308,7 @@ struct ProfileView: View {
                     var items: [(Int, Movie)] = []
                     while let next = try await group.next() { items.append(next) }
                     let map = Dictionary(uniqueKeysWithValues: items)
-                    return ids.compactMap { map[$0] }
+                    return limitedIDs.compactMap { map[$0] }
                 }
                 movies = fetched
             } catch {
@@ -289,9 +319,10 @@ struct ProfileView: View {
         case .watched:
             let entries = currentWatchedEntries()
             guard !entries.isEmpty else { movies = []; return }
+            let limitedEntries = limitToFive ? Array(entries.prefix(5)) : entries
             do {
                 let fetched: [Movie] = try await withThrowingTaskGroup(of: (Int, Movie?).self) { group in
-                    for entry in entries {
+                    for entry in limitedEntries {
                         group.addTask {
                             do {
                                 if entry.type == "movie" {
@@ -309,7 +340,7 @@ struct ProfileView: View {
                     var items: [(Int, Movie?)] = []
                     while let next = try await group.next() { items.append(next) }
                     let map = Dictionary(uniqueKeysWithValues: items)
-                    let ordered = entries.compactMap { map[$0.id] ?? nil }
+                    let ordered = limitedEntries.compactMap { map[$0.id] ?? nil }
                     return ordered.compactMap { $0 }
                 }
                 movies = fetched
@@ -317,6 +348,17 @@ struct ProfileView: View {
                 errorMessage = error.localizedDescription
                 movies = []
             }
+        }
+    }
+
+    private var showAllButton: Bool {
+        guard let u = authVM.user else { return false }
+        switch selectedTab {
+        case .favorites: return u.favoritesIDs.count > 5
+        case .watchlist: return u.watchlistIDs.count > 5
+        case .watched:
+            let count = u.watchedEntries.isEmpty ? u.watchedIDs.count : u.watchedEntries.count
+            return count > 5
         }
     }
 
@@ -347,4 +389,3 @@ struct ProfileView: View {
     ProfileView()
         .environmentObject(AuthViewModel())
 }
-

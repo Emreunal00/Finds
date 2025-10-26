@@ -249,6 +249,29 @@ final class MovieService: MovieServicing {
         return result
     }
 
+    // NEW: fetch combined credits for a person and map to Movie (movie/tv only)
+    private func fetchCombinedCredits(personId: Int) async throws -> [Movie] {
+        var comps = URLComponents(url: TMDBAPI.baseURL.appendingPathComponent("person/\(personId)/combined_credits"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            .init(name: "api_key", value: TMDBAPI.apiKey),
+            .init(name: "language", value: "en-US")
+        ]
+        let url = try comps.asURL()
+        let data = try await requestData(url: url, context: "person/\(personId)/combined_credits", maxRetries: 3, initialDelay: 0.8)
+        let resp = try decode(TMDBCombinedCredits.self, from: data, endpoint: "person/\(personId)/combined_credits")
+
+        // Prefer cast credits (acting roles). Map only movie/tv entries.
+        let castMovies = resp.cast.compactMap { $0.toMovieIfSupported() }
+
+        // Optionally include crew entries that are not duplicates (e.g., directing/writing)
+        // If you want only cast, return castMovies directly.
+        let existingIDs = Set(castMovies.map { $0.id })
+        let crewMovies = (resp.crew ?? []).compactMap { $0.mediaType == "movie" || $0.mediaType == "tv" ? TMDBCombinedCast(id: $0.id, mediaType: $0.mediaType, title: $0.title, name: $0.name, releaseDate: $0.releaseDate, firstAirDate: $0.firstAirDate, posterPath: $0.posterPath, voteAverage: $0.voteAverage, overview: $0.overview, genreIDs: $0.genreIDs).toMovieIfSupported() : nil }
+            .filter { !existingIDs.contains($0.id) }
+
+        return castMovies + crewMovies
+    }
+
     private func requestData(url: URL, context: String, maxRetries: Int = 3, initialDelay: TimeInterval = 0.8) async throws -> Data {
         var attempt = 0
         var delay = initialDelay
@@ -382,4 +405,3 @@ struct TMDBTVSummary: Codable {
         )
     }
 }
-

@@ -83,9 +83,55 @@ final class AuthViewModel: ObservableObject {
 
     // MARK: - Favorites / Watchlist
 
-    func toggleFavorite(movieID: Int) async { /* unchanged from your latest with small delay if you prefer */ }
+    func toggleFavorite(movieID: Int) async {
+        guard let uid = service.currentUID else {
+            self.errorMessage = "No active session."
+            return
+        }
+        do {
+            let repo = UserProfileRepository()
+            let profile = try await service.fetchProfile(uid: uid)
+            let isFav = profile.favoritesIDs.contains(movieID)
+            if isFav {
+                try await repo.removeFromFavorites(uid: uid, id: movieID)
+                debugPrint("[ToggleFavorite] removed id=\(movieID)")
+            } else {
+                try await repo.addToFavorites(uid: uid, id: movieID)
+                debugPrint("[ToggleFavorite] added id=\(movieID)")
+            }
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            self.user = try await service.fetchProfile(uid: uid)
+            self.listsVersion &+= 1
+        } catch {
+            self.errorMessage = error.localizedDescription
+            debugPrint("[ToggleFavorite] error:", error.localizedDescription)
+        }
+    }
 
-    func toggleWatchlist(movieID: Int) async { /* unchanged from your latest with small delay if you prefer */ }
+    func toggleWatchlist(movieID: Int) async {
+        guard let uid = service.currentUID else {
+            self.errorMessage = "No active session."
+            return
+        }
+        do {
+            let repo = UserProfileRepository()
+            let profile = try await service.fetchProfile(uid: uid)
+            let inWatchlist = profile.watchlistIDs.contains(movieID)
+            if inWatchlist {
+                try await repo.removeFromWatchlist(uid: uid, id: movieID)
+                debugPrint("[ToggleWatchlist] removed id=\(movieID)")
+            } else {
+                try await repo.addToWatchlist(uid: uid, id: movieID)
+                debugPrint("[ToggleWatchlist] added id=\(movieID)")
+            }
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            self.user = try await service.fetchProfile(uid: uid)
+            self.listsVersion &+= 1
+        } catch {
+            self.errorMessage = error.localizedDescription
+            debugPrint("[ToggleWatchlist] error:", error.localizedDescription)
+        }
+    }
 
     // MARK: - Watched (typed)
 
@@ -94,16 +140,17 @@ final class AuthViewModel: ObservableObject {
             self.errorMessage = "No active session."
             return
         }
-        debugPrint("[ToggleWatchedTyped] start id=\(movieID) type=\(type)")
+        let normalizedType = type.lowercased()
+        debugPrint("[ToggleWatchedTyped] start id=\(movieID) type=\(normalizedType)")
         do {
             let repo = UserProfileRepository()
             let current = try await service.fetchProfile(uid: uid)
 
-            let entry = WatchedEntry(id: movieID, type: type)
-            var hasEntry = current.watchedEntries.contains(where: { $0.id == entry.id && $0.type == entry.type })
+            let entry = WatchedEntry(id: movieID, type: normalizedType)
+            var hasEntry = current.watchedEntries.contains(where: { $0.id == entry.id && $0.type.lowercased() == entry.type })
 
             // Backward compat: if in legacy watchedIDs and type == movie, consider as present
-            if !hasEntry && type == "movie" && current.watchedIDs.contains(movieID) {
+            if !hasEntry && entry.type == "movie" && current.watchedIDs.contains(movieID) {
                 hasEntry = true
             }
 
@@ -158,4 +205,3 @@ private extension AuthViewModel {
         return MappedError(userMessage: userMessage, debugDescription: debugDescription)
     }
 }
-
