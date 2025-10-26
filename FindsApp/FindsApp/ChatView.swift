@@ -7,9 +7,9 @@ struct ChatView: View {
                 Image(systemName: "bubble.left.and.bubble.right.fill")
                     .font(.system(size: 48))
                     .foregroundStyle(.secondary)
-                Text("Chat yakında!")
+                Text("Chat coming soon!")
                     .font(.title3).bold()
-                Text("Bu alan sohbet özelliği için yer tutucudur.")
+                Text("This area is a placeholder for the chat feature.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -22,4 +22,3 @@ struct ChatView: View {
 #Preview {
     ChatView()
 }
-

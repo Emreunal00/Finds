@@ -40,7 +40,6 @@ final class AuthService: AuthServicing {
     func signIn(email: String, password: String) async throws -> UserProfile {
         let result = try await auth.signIn(withEmail: email, password: password)
         let uid = result.user.uid
-        // users doc yoksa oluştur
         do {
             return try await userRepo.fetch(uid: uid)
         } catch {
@@ -72,4 +71,3 @@ final class AuthService: AuthServicing {
         }
     }
 }
-

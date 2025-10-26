@@ -2,12 +2,14 @@ import SwiftUI
 
 struct MovieDetailView: View {
     let movie: Movie
+    @EnvironmentObject var authVM: AuthViewModel
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 headerPoster
                 titleSection
+                actionRow
                 metaSection
                 if !movie.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text(movie.summary)
@@ -28,6 +30,21 @@ struct MovieDetailView: View {
                 endPoint: .bottom
             ).ignoresSafeArea()
         )
+    }
+
+    private var isFavorite: Bool {
+        guard let profile = authVM.user else { return false }
+        return profile.favoritesIDs.contains(movie.id)
+    }
+
+    private var isInWatchlist: Bool {
+        guard let profile = authVM.user else { return false }
+        return profile.watchlistIDs.contains(movie.id)
+    }
+
+    private var isWatched: Bool {
+        guard let profile = authVM.user else { return false }
+        return profile.watchedIDs.contains(movie.id)
     }
 
     private var headerPoster: some View {
@@ -72,8 +89,10 @@ struct MovieDetailView: View {
                     Text(String(movie.year))
                 }
                 if movie.rating > 0 {
-                    Label(String(format: "%.1f", movie.rating), systemImage: "star.fill")
-                        .symbolRenderingMode(.hierarchical)
+                    let percent = Int(round(movie.rating * 20))
+                    Text("\(percent)%")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(ScoreColor.color(for: percent))
                 }
                 if let runtime = movie.durationMinutes {
                     Label("\(runtime) min", systemImage: "clock")
@@ -83,6 +102,45 @@ struct MovieDetailView: View {
             .font(.subheadline)
             .foregroundStyle(.secondary)
         }
+    }
+
+    private var actionRow: some View {
+        HStack(spacing: 12) {
+            Button {
+                Task { await authVM.toggleFavorite(movieID: movie.id) }
+            } label: {
+                Label(isFavorite ? "Favorited" : "Favorite",
+                      systemImage: isFavorite ? "heart.fill" : "heart")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(.bordered)
+            .tint(isFavorite ? .pink : .secondary)
+            .disabled(authVM.user == nil)
+
+            Button {
+                Task { await authVM.toggleWatchlist(movieID: movie.id) }
+            } label: {
+                Label(isInWatchlist ? "In Watchlist" : "Watchlist",
+                      systemImage: isInWatchlist ? "bookmark.fill" : "bookmark")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(.bordered)
+            .tint(isInWatchlist ? .blue : .secondary)
+            .disabled(authVM.user == nil)
+
+            Button {
+                Task { await authVM.toggleWatched(movieID: movie.id) }
+            } label: {
+                Label(isWatched ? "Watched" : "Mark as Watched",
+                      systemImage: isWatched ? "checkmark.circle.fill" : "checkmark.circle")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(.bordered)
+            .tint(isWatched ? .green : .secondary)
+            .disabled(authVM.user == nil)
+        }
+        .font(.subheadline)
+        .padding(.top, 4)
     }
 
     private var metaSection: some View {
@@ -138,5 +196,6 @@ struct MovieDetailView: View {
     )
     return NavigationStack {
         MovieDetailView(movie: sample)
+            .environmentObject(AuthViewModel())
     }
 }

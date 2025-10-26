@@ -7,12 +7,12 @@ struct MainTabView: View {
         TabView {
             ContentView()
                 .tabItem {
-                    Label("Anasayfa", systemImage: "house.fill")
+                    Label("Home", systemImage: "house.fill")
                 }
 
             SearchView()
                 .tabItem {
-                    Label("Arama", systemImage: "magnifyingglass")
+                    Label("Search", systemImage: "magnifyingglass")
                 }
 
             ChatView()
@@ -22,7 +22,7 @@ struct MainTabView: View {
 
             ProfileView()
                 .tabItem {
-                    Label("Profil", systemImage: "person.crop.circle")
+                    Label("Profile", systemImage: "person.crop.circle")
                 }
         }
     }
@@ -32,4 +32,3 @@ struct MainTabView: View {
     MainTabView()
         .environmentObject(AuthViewModel())
 }
-

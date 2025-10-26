@@ -35,13 +35,21 @@ struct AuthView: View {
                                 .textInputAutocapitalization(.never)
                                 .keyboardType(.emailAddress)
                                 .textFieldStyle(.roundedBorder)
+
                             SecureField("Password", text: $passwordUp)
                                 .textFieldStyle(.roundedBorder)
-                            TextField("Display Name (optional)", text: $displayNameUp)
+
+                            // Display Name REQUIRED
+                            TextField("Display Name", text: $displayNameUp)
                                 .textFieldStyle(.roundedBorder)
 
                             Button {
-                                Task { await authVM.signUp(email: emailUp, password: passwordUp, displayName: displayNameUp.isEmpty ? nil : displayNameUp) }
+                                let trimmedName = displayNameUp.trimmingCharacters(in: .whitespacesAndNewlines)
+                                Task {
+                                    await authVM.signUp(email: emailUp,
+                                                        password: passwordUp,
+                                                        displayName: trimmedName)
+                                }
                             } label: {
                                 HStack {
                                     if authVM.isLoading { ProgressView().tint(.white) }
@@ -50,7 +58,10 @@ struct AuthView: View {
                                 .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.borderedProminent)
-                            .disabled(authVM.isLoading || emailUp.isEmpty || passwordUp.count < 6)
+                            .disabled(authVM.isLoading
+                                      || emailUp.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                      || passwordUp.count < 6
+                                      || displayNameUp.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }
                         .padding(.horizontal)
                     } else {
@@ -59,6 +70,7 @@ struct AuthView: View {
                                 .textInputAutocapitalization(.never)
                                 .keyboardType(.emailAddress)
                                 .textFieldStyle(.roundedBorder)
+
                             SecureField("Password", text: $passwordIn)
                                 .textFieldStyle(.roundedBorder)
 
@@ -72,7 +84,9 @@ struct AuthView: View {
                                 .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.borderedProminent)
-                            .disabled(authVM.isLoading || emailIn.isEmpty || passwordIn.isEmpty)
+                            .disabled(authVM.isLoading
+                                      || emailIn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                      || passwordIn.isEmpty)
                         }
                         .padding(.horizontal)
                     }
@@ -98,4 +112,3 @@ struct AuthView: View {
     AuthView()
         .environmentObject(AuthViewModel())
 }
-

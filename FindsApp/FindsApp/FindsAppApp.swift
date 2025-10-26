@@ -42,11 +42,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
 @main
 struct YourApp: App {
-  // register app delegate for Firebase setup
   @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
 
-  // Global tema tercihi
   @AppStorage("themePreference") private var themePreferenceRaw: String = ThemePreference.system.rawValue
+
+  @StateObject private var authVM = AuthViewModel()
 
   private var themePreference: ThemePreference {
     ThemePreference(rawValue: themePreferenceRaw) ?? .system
@@ -54,11 +54,15 @@ struct YourApp: App {
 
   var body: some Scene {
     WindowGroup {
-      NavigationView {
-        ContentView()
+      Group {
+        if authVM.user != nil {
+          MainTabView()
+        } else {
+          AuthView()
+        }
       }
-      // Kullanıcı tercihine göre renk şemasını uygula
       .preferredColorScheme(themePreference.colorScheme)
+      .environmentObject(authVM)
     }
   }
 }

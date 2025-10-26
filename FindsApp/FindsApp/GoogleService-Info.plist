@@ -26,5 +26,12 @@
 	<true/>
 	<key>GOOGLE_APP_ID</key>
 	<string>1:91195881425:ios:b18f12af3d983aef0212f0</string>
+	<key>FirebaseDataCollectionDefaultEnabled</key>
+	<true/>
+	<!-- Eğer AppDelegate proxy özelliğini kapatmak isterseniz: -->
+	<!--
+	<key>GoogleUtilitiesAppDelegateProxyEnabled</key>
+	<false/>
+	-->
 </dict>
 </plist>

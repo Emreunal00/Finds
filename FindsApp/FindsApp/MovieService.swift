@@ -6,20 +6,43 @@ protocol MovieServicing {
     func getSuggestions(page: Int) async throws -> [Movie]
     func searchMovies(query: String, year: Int?, genreID: Int?, page: Int) async throws -> [Movie]
     func fetchGenres() async throws -> [TMDBGenre]
-    // NEW: Multi Search
+    // Multi Search
     func searchMulti(query: String, page: Int) async throws -> [Movie]
 
-    // NEW: Details
+    // Details
     func fetchMovieRuntime(id: Int) async throws -> Int?
     func fetchTVRuntime(id: Int) async throws -> Int?
+
+    // Basic by ID
+    func fetchMovieBasic(id: Int) async throws -> Movie
+    func fetchTVBasic(id: Int) async throws -> Movie
 }
 
 final class MovieService: MovieServicing {
-    private let session: URLSession
+    private let maxRuntimeEnrichmentCount = 6
+    private let runtimeConcurrencyLimit = 2
 
-    init(session: URLSession = .shared) {
-        self.session = session
+    private let session: URLSession
+    private let decoder: JSONDecoder
+
+    init(session: URLSession? = nil) {
+        if let session {
+            self.session = session
+        } else {
+            let cfg = URLSessionConfiguration.default
+            cfg.timeoutIntervalForRequest = 20
+            cfg.timeoutIntervalForResource = 30
+            cfg.waitsForConnectivity = true
+            cfg.requestCachePolicy = .useProtocolCachePolicy
+            self.session = URLSession(configuration: cfg)
+        }
+
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        self.decoder = d
     }
+
+    // MARK: - Home
 
     func getTrending(page: Int = 1) async throws -> [Movie] {
         var comps = URLComponents(url: TMDBAPI.baseURL.appendingPathComponent("trending/movie/week"), resolvingAgainstBaseURL: false)!
@@ -28,11 +51,11 @@ final class MovieService: MovieServicing {
             .init(name: "language", value: "en-US"),
             .init(name: "page", value: String(page))
         ]
-        let (data, _) = try await session.data(from: try comps.asURL())
-        let resp = try JSONDecoder().decode(TMDBMovieResponse.self, from: data)
+        let url = try comps.asURL()
+        let data = try await requestData(url: url, context: "trending/movie/week", maxRetries: 3, initialDelay: 0.8)
+        let resp = try decode(TMDBMovieResponse.self, from: data, endpoint: "trending/movie/week")
         var movies = resp.results.map { $0.toMovie() }
 
-        // Süreleri paralel çek
         movies = try await enrichMoviesWithRuntime(fromMovies: resp.results, baseMovies: movies)
         return movies
     }
@@ -46,18 +69,20 @@ final class MovieService: MovieServicing {
             .init(name: "vote_average.gte", value: "6.5"),
             .init(name: "page", value: String(page))
         ]
-        let (data, _) = try await session.data(from: try comps.asURL())
-        let resp = try JSONDecoder().decode(TMDBMovieResponse.self, from: data)
+        let url = try comps.asURL()
+        let data = try await requestData(url: url, context: "discover/movie", maxRetries: 3, initialDelay: 0.8)
+        let resp = try decode(TMDBMovieResponse.self, from: data, endpoint: "discover/movie")
         var movies = resp.results.map { $0.toMovie() }
 
         movies = try await enrichMoviesWithRuntime(fromMovies: resp.results, baseMovies: movies)
         return movies
     }
 
+    // MARK: - Search
+
     func searchMovies(query: String, year: Int?, genreID: Int?, page: Int = 1) async throws -> [Movie] {
-        if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return []
-        }
+        if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return [] }
+
         var comps = URLComponents(url: TMDBAPI.baseURL.appendingPathComponent("search/movie"), resolvingAgainstBaseURL: false)!
         var items: [URLQueryItem] = [
             .init(name: "api_key", value: TMDBAPI.apiKey),
@@ -69,16 +94,56 @@ final class MovieService: MovieServicing {
         if let year { items.append(.init(name: "year", value: String(year))) }
         comps.queryItems = items
 
-        let (data, _) = try await session.data(from: try comps.asURL())
-        let resp = try JSONDecoder().decode(TMDBMovieResponse.self, from: data)
+        let url = try comps.asURL()
+        let data = try await requestData(url: url, context: "search/movie", maxRetries: 3, initialDelay: 0.8)
+        let resp = try decode(TMDBMovieResponse.self, from: data, endpoint: "search/movie")
+
         var tmdbMovies = resp.results
         if let genreID {
             tmdbMovies = tmdbMovies.filter { $0.genreIDs?.contains(genreID) == true }
         }
-        var movies = tmdbMovies.map { $0.toMovie() }
-        movies = try await enrichMoviesWithRuntime(fromMovies: tmdbMovies, baseMovies: movies)
+        let movies = tmdbMovies.map { $0.toMovie() }
         return movies
     }
+
+    func searchMulti(query: String, page: Int = 1) async throws -> [Movie] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return [] }
+
+        do {
+            var comps = URLComponents(url: TMDBAPI.baseURL.appendingPathComponent("search/multi"), resolvingAgainstBaseURL: false)!
+            comps.queryItems = [
+                .init(name: "api_key", value: TMDBAPI.apiKey),
+                .init(name: "language", value: "en-US"),
+                .init(name: "query", value: trimmed),
+                .init(name: "include_adult", value: "false"),
+                .init(name: "page", value: String(page))
+            ]
+
+            let url = try comps.asURL()
+            let data = try await requestData(url: url, context: "search/multi", maxRetries: 3, initialDelay: 0.8)
+            let resp = try decode(TMDBMultiSearchResponse.self, from: data, endpoint: "search/multi")
+
+            // 1) Movie/TV sonuçlarını topla
+            var mapped: [Movie] = resp.results.compactMap { $0.toMovie() }
+
+            // 2) Person sonuçlarını yakala ve en iyi eşleşen ilk kişiden combined_credits çek
+            if let bestPerson = resp.results.first(where: { ($0.mediaType ?? "") == "person" }) {
+                let personMovies = try await fetchCombinedCredits(personId: bestPerson.id)
+                // Aynı içeriklerin iki kez gelmesini engelle
+                let existingIDs = Set(mapped.map { $0.id })
+                let uniqueFromPerson = personMovies.filter { !existingIDs.contains($0.id) }
+                mapped.append(contentsOf: uniqueFromPerson)
+            }
+
+            return mapped
+        } catch {
+            print("[TMDB] search/multi failed, falling back to search/movie. Error:", error)
+            return try await searchMovies(query: trimmed, year: nil, genreID: nil, page: page)
+        }
+    }
+
+    // MARK: - Genres
 
     func fetchGenres() async throws -> [TMDBGenre] {
         var comps = URLComponents(url: TMDBAPI.baseURL.appendingPathComponent("genre/movie/list"), resolvingAgainstBaseURL: false)!
@@ -86,36 +151,10 @@ final class MovieService: MovieServicing {
             .init(name: "api_key", value: TMDBAPI.apiKey),
             .init(name: "language", value: "en-US")
         ]
-        let (data, _) = try await session.data(from: try comps.asURL())
-        let list = try JSONDecoder().decode(TMDBGenreList.self, from: data)
+        let url = try comps.asURL()
+        let data = try await requestData(url: url, context: "genre/movie/list", maxRetries: 3, initialDelay: 0.8)
+        let list = try decode(TMDBGenreList.self, from: data, endpoint: "genre/movie/list")
         return list.genres
-    }
-
-    // MARK: - Multi Search
-
-    func searchMulti(query: String, page: Int = 1) async throws -> [Movie] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return [] }
-
-        var comps = URLComponents(url: TMDBAPI.baseURL.appendingPathComponent("search/multi"), resolvingAgainstBaseURL: false)!
-        comps.queryItems = [
-            .init(name: "api_key", value: TMDBAPI.apiKey),
-            .init(name: "language", value: "en-US"),
-            .init(name: "query", value: trimmed),
-            .init(name: "include_adult", value: "false"),
-            .init(name: "page", value: String(page))
-        ]
-
-        let (data, _) = try await session.data(from: try comps.asURL())
-        let resp = try JSONDecoder().decode(TMDBMultiSearchResponse.self, from: data)
-
-        // person dışındakileri Movie’a map et
-        var mapped: [Movie] = resp.results.compactMap { $0.toMovie() }
-
-        // Süreleri paralel çek: mediaType = movie/tv
-        mapped = try await enrichMultiWithRuntime(results: resp.results, baseMovies: mapped)
-
-        return mapped
     }
 
     // MARK: - Details
@@ -126,8 +165,9 @@ final class MovieService: MovieServicing {
             .init(name: "api_key", value: TMDBAPI.apiKey),
             .init(name: "language", value: "en-US")
         ]
-        let (data, _) = try await session.data(from: try comps.asURL())
-        let detail = try JSONDecoder().decode(TMDBMovieDetail.self, from: data)
+        let url = try comps.asURL()
+        let data = try await requestData(url: url, context: "movie/\(id)", maxRetries: 3, initialDelay: 0.8)
+        let detail = try decode(TMDBMovieDetail.self, from: data, endpoint: "movie/\(id)")
         return detail.runtime
     }
 
@@ -137,74 +177,189 @@ final class MovieService: MovieServicing {
             .init(name: "api_key", value: TMDBAPI.apiKey),
             .init(name: "language", value: "en-US")
         ]
-        let (data, _) = try await session.data(from: try comps.asURL())
-        let detail = try JSONDecoder().decode(TMDBTVDetail.self, from: data)
-        // episode_run_time bir dizi; ilk değeri kullanıyoruz
+        let url = try comps.asURL()
+        let data = try await requestData(url: url, context: "tv/\(id)", maxRetries: 3, initialDelay: 0.8)
+        let detail = try decode(TMDBTVDetail.self, from: data, endpoint: "tv/\(id)")
         return detail.episodeRunTime?.first
     }
 
-    // MARK: - Helpers to enrich runtime
+    func fetchMovieBasic(id: Int) async throws -> Movie {
+        var comps = URLComponents(url: TMDBAPI.baseURL.appendingPathComponent("movie/\(id)"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            .init(name: "api_key", value: TMDBAPI.apiKey),
+            .init(name: "language", value: "en-US")
+        ]
+        let url = try comps.asURL()
+        let data = try await requestData(url: url, context: "movie/\(id)", maxRetries: 3, initialDelay: 0.8)
+        let detail = try decode(TMDBMovieSummary.self, from: data, endpoint: "movie/\(id)")
+        return detail.toMovie()
+    }
+
+    func fetchTVBasic(id: Int) async throws -> Movie {
+        var comps = URLComponents(url: TMDBAPI.baseURL.appendingPathComponent("tv/\(id)"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            .init(name: "api_key", value: TMDBAPI.apiKey),
+            .init(name: "language", value: "en-US")
+        ]
+        let url = try comps.asURL()
+        let data = try await requestData(url: url, context: "tv/\(id)", maxRetries: 3, initialDelay: 0.8)
+        let detail = try decode(TMDBTVSummary.self, from: data, endpoint: "tv/\(id)")
+        return detail.toMovie()
+    }
+
+    // MARK: - Person combined credits
+
+    private func fetchCombinedCredits(personId: Int) async throws -> [Movie] {
+        var comps = URLComponents(url: TMDBAPI.baseURL.appendingPathComponent("person/\(personId)/combined_credits"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            .init(name: "api_key", value: TMDBAPI.apiKey),
+            .init(name: "language", value: "en-US")
+        ]
+        let url = try comps.asURL()
+        let data = try await requestData(url: url, context: "person/\(personId)/combined_credits", maxRetries: 3, initialDelay: 0.8)
+        let resp = try decode(TMDBCombinedCredits.self, from: data, endpoint: "person/\(personId)/combined_credits")
+        // cast içinden movie/tv olanları al
+        let movies = resp.cast.compactMap { $0.toMovieIfSupported() }
+        // Basit bir sıralama: oy ortalaması ve yıl
+        let sorted = movies.sorted { lhs, rhs in
+            if lhs.rating != rhs.rating { return lhs.rating > rhs.rating }
+            if lhs.year != rhs.year { return lhs.year > rhs.year }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
+        return sorted
+    }
+
+    // MARK: - Enrichment helpers
 
     private func enrichMoviesWithRuntime(fromMovies tmdb: [TMDBMovie], baseMovies: [Movie]) async throws -> [Movie] {
-        // TMDBMovie listesi film (movie) içeriyor; her biri için runtime çek
-        let ids = tmdb.map { $0.id }
-        // Paralel istekler
-        let runtimes: [Int?] = try await withThrowingTaskGroup(of: (Int, Int?).self) { group in
-            for id in ids {
-                group.addTask {
+        let slice = Array(tmdb.prefix(maxRuntimeEnrichmentCount))
+        let ids = slice.map { $0.id }
+
+        let runtimeMap = try await fetchRuntimesLimited(ids: ids, isTV: false)
+        var result = baseMovies
+        for (idx, tm) in slice.enumerated() {
+            if idx < result.count {
+                result[idx].durationMinutes = runtimeMap[tm.id] ?? nil
+            }
+        }
+        return result
+    }
+
+    private func fetchRuntimesLimited(ids: [Int], isTV: Bool) async throws -> [Int: Int?] {
+        var result: [Int: Int?] = [:]
+        if ids.isEmpty { return result }
+
+        var pending = Array(ids)
+        var active: [Task<(Int, Int?), Error>] = []
+
+        func launchNext() {
+            guard !pending.isEmpty else { return }
+            let id = pending.removeFirst()
+            let task = Task { () -> (Int, Int?) in
+                if isTV {
+                    let rt = try await self.fetchTVRuntime(id: id)
+                    return (id, rt)
+                } else {
                     let rt = try await self.fetchMovieRuntime(id: id)
                     return (id, rt)
                 }
             }
-            var map: [Int: Int?] = [:]
-            for try await (id, rt) in group {
-                map[id] = rt
-            }
-            // baseMovies ile aynı sırada döndürmek için
-            return ids.map { map[$0] ?? nil }
+            active.append(task)
         }
 
-        // baseMovies Movie struct’ında TMDb id’si yok; bu yüzden sıraya göre eşliyoruz.
-        // Öneri: Movie’ye tmdbID eklemek ileride faydalı olur. Şimdilik sırayı koruyoruz.
-        return zip(baseMovies, runtimes).map { (movie, rt) in
-            var m = movie
-            m.durationMinutes = rt
-            return m
+        for _ in 0..<min(runtimeConcurrencyLimit, pending.count) {
+            launchNext()
+        }
+
+        while !active.isEmpty {
+            let finished = try await withThrowingTaskGroup(of: (Int, Int?).self) { group -> (Int, Int?) in
+                for t in active {
+                    group.addTask { try await t.value }
+                }
+                let value = try await group.next()!
+                group.cancelAll()
+                return value
+            }
+
+            result[finished.0] = finished.1
+            active.forEach { $0.cancel() }
+            active.removeAll()
+            launchNext()
+        }
+
+        return result
+    }
+
+    // MARK: - Networking helpers
+
+    private func requestData(url: URL, context: String, maxRetries: Int = 3, initialDelay: TimeInterval = 0.8) async throws -> Data {
+        var attempt = 0
+        var delay = initialDelay
+
+        while true {
+            do {
+                let (data, response) = try await session.data(from: url)
+                try throwIfHTTPError(data: data, response: response, context: context)
+                return data
+            } catch {
+                attempt += 1
+                if shouldRetry(error: error), attempt <= maxRetries {
+                    print("[TMDB] \(context) attempt \(attempt) failed, retrying in \(String(format: "%.2f", delay))s. Error:", error)
+                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    delay *= 2
+                    continue
+                } else {
+                    throw error
+                }
+            }
         }
     }
 
-    private func enrichMultiWithRuntime(results: [TMDBMultiResult], baseMovies: [Movie]) async throws -> [Movie] {
-        // Sadece movie/tv olanlar maplenmiş durumda. Sıra korunuyor.
-        // Her bir result için uygun endpoint’ten runtime çek.
-        let fetchTasks = results.enumerated().compactMap { (idx, r) -> (Int, () async throws -> Int?)? in
-            guard r.mediaType == "movie" || r.mediaType == "tv" else { return nil }
-            if r.mediaType == "movie" {
-                return (idx, { try await self.fetchMovieRuntime(id: r.id) })
-            } else {
-                return (idx, { try await self.fetchTVRuntime(id: r.id) })
-            }
+    private func shouldRetry(error: Error) -> Bool {
+        let ns = error as NSError
+        if ns.domain == NSURLErrorDomain {
+            let retryable: Set<Int> = [
+                NSURLErrorTimedOut,
+                NSURLErrorCannotFindHost,
+                NSURLErrorCannotConnectToHost,
+                NSURLErrorNetworkConnectionLost,
+                NSURLErrorNotConnectedToInternet,
+                NSURLErrorDNSLookupFailed
+            ]
+            return retryable.contains(ns.code)
         }
+        if ns.domain == "TMDBHTTP" {
+            return (500...599).contains(ns.code) || ns.code == 429
+        }
+        return false
+    }
 
-        let runtimeByIndex: [Int: Int?] = try await withThrowingTaskGroup(of: (Int, Int?).self) { group in
-            for (idx, task) in fetchTasks {
-                group.addTask {
-                    let rt = try await task()
-                    return (idx, rt)
-                }
-            }
-            var dict: [Int: Int?] = [:]
-            for try await (idx, rt) in group {
-                dict[idx] = rt
-            }
-            return dict
+    private func decode<T: Decodable>(_ type: T.Type, from data: Data, endpoint: String) throws -> T {
+        do {
+            return try decoder.decode(T.self, from: data)
+        } catch {
+            let sample = String(decoding: data.prefix(512), as: UTF8.self)
+            print("[TMDB] Decode error at \(endpoint):", error)
+            print("[TMDB] Payload sample:", sample)
+            throw error
         }
+    }
 
-        var enriched = baseMovies
-        for (idx, rt) in runtimeByIndex {
-            guard idx < enriched.count else { continue }
-            enriched[idx].durationMinutes = rt
+    private func throwIfHTTPError(data: Data, response: URLResponse, context: String) throws {
+        guard let http = response as? HTTPURLResponse else { return }
+        guard (200...299).contains(http.statusCode) else {
+            let body = String(decoding: data, as: UTF8.self)
+            let err = NSError(
+                domain: "TMDBHTTP",
+                code: http.statusCode,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "TMDb \(context) failed with status \(http.statusCode)",
+                    "body": body
+                ]
+            )
+            print("[TMDB] HTTP error \(http.statusCode) at \(context). Body:", body)
+            throw err
         }
-        return enriched
     }
 }
 
@@ -214,3 +369,62 @@ private extension URLComponents {
         return url
     }
 }
+
+// MARK: - DTO for movie detail summary -> Movie
+
+struct TMDBMovieSummary: Codable {
+    let id: Int
+    let title: String?
+    let releaseDate: String?
+    let posterPath: String?
+    let voteAverage: Double?
+    let overview: String?
+
+    func toMovie() -> Movie {
+        let yearValue: Int = {
+            if let d = releaseDate, let y = d.split(separator: "-").first, let yi = Int(y) { return yi }
+            return 0
+        }()
+        return Movie(
+            id: id,
+            title: title ?? "Untitled",
+            year: yearValue,
+            genres: [],
+            posterName: "",
+            rating: (voteAverage ?? 0) / 2.0,
+            summary: overview ?? "",
+            posterURL: TMDBAPI.posterURL(path: posterPath),
+            durationMinutes: nil
+        )
+    }
+}
+
+// MARK: - DTO for TV detail summary -> Movie
+
+struct TMDBTVSummary: Codable {
+    let id: Int
+    let name: String?
+    let firstAirDate: String?
+    let posterPath: String?
+    let voteAverage: Double?
+    let overview: String?
+
+    func toMovie() -> Movie {
+        let yearValue: Int = {
+            if let d = firstAirDate, let y = d.split(separator: "-").first, let yi = Int(y) { return yi }
+            return 0
+        }()
+        return Movie(
+            id: id,
+            title: name ?? "Untitled",
+            year: yearValue,
+            genres: [],
+            posterName: "",
+            rating: (voteAverage ?? 0) / 2.0,
+            summary: overview ?? "",
+            posterURL: TMDBAPI.posterURL(path: posterPath),
+            durationMinutes: nil
+        )
+    }
+}
+
