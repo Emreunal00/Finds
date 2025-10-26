@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import FirebaseAuth
+import FirebaseFirestore
 
 @MainActor
 final class AuthViewModel: ObservableObject {
@@ -29,19 +30,21 @@ final class AuthViewModel: ObservableObject {
 
         if let uid {
             do {
+                // Initial profile
                 let profile = try await service.fetchProfile(uid: uid)
                 self.user = profile
                 self.errorMessage = nil
                 debugPrint("[Auth] Auth state changed -> signed in uid=\(uid)")
-                debugPrint("[Auth] Initial profile fetched. favorites=\(profile.favoritesIDs.count) watchlist=\(profile.watchlistIDs.count) watched=\(profile.watchedEntries.count)")
+                debugPrint("[Auth] Initial profile fetched. favEntries=\(profile.favoritesEntries.count) watchEntries=\(profile.watchlistEntries.count) watched=\(profile.watchedEntries.count)")
 
+                // Realtime listener
                 profileObserver = service.observeProfile(uid: uid) { [weak self] result in
                     Task { @MainActor in
                         switch result {
                         case .success(let updated):
                             self?.user = updated
                             self?.listsVersion &+= 1
-                            debugPrint("[Auth] Profile updated via listener. counts fav=\(updated.favoritesIDs.count) watch=\(updated.watchlistIDs.count) watched=\(updated.watchedEntries.count) listsVersion=\(self?.listsVersion ?? -1)")
+                            debugPrint("[Auth] Profile updated via listener. favEntries=\(updated.favoritesEntries.count) watchEntries=\(updated.watchlistEntries.count) watched=\(updated.watchedEntries.count) listsVersion=\(self?.listsVersion ?? -1)")
                         case .failure(let err):
                             debugPrint("[Auth] Profile listener error:", err.localizedDescription)
                         }
@@ -49,9 +52,8 @@ final class AuthViewModel: ObservableObject {
                 }
                 debugPrint("[Auth] Profile listener started")
             } catch {
-                let mapped = Self.mapAuthError(error)
-                self.errorMessage = mapped.userMessage
-                debugPrint("[Auth] Fetch profile failed:", mapped.debugDescription)
+                // Do not show error to user here; listener will likely deliver shortly.
+                debugPrint("[Auth] Fetch profile failed (will rely on listener):", error.localizedDescription)
             }
         } else {
             self.user = nil
@@ -59,9 +61,43 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
-    func signUp(email: String, password: String, displayName: String?) async { /* unchanged */ }
+    // MARK: - Auth
 
-    func signIn(email: String, password: String) async { /* unchanged */ }
+    func signUp(email: String, password: String, displayName: String?) async {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false } // Critically stop blocking UI regardless of fetch timing
+        do {
+            // This creates the auth user and writes the profile. It also tries to fetch,
+            // but even if that fetch struggles, our auth state listener will kick in.
+            let profile = try await service.signUp(email: email, password: password, displayName: displayName)
+            // Optimistic: if we have it, set immediately. If not, handleAuthChange will set soon.
+            self.user = profile
+            self.errorMessage = nil
+            debugPrint("[Auth] SignUp success uid=\(profile.id ?? "-") email=\(profile.email)")
+        } catch {
+            // If createUser succeeded but fetch failed transiently, handleAuthChange will still run.
+            let mapped = Self.mapAuthError(error)
+            self.errorMessage = mapped.userMessage
+            debugPrint("[Auth] SignUp failed:", mapped.debugDescription)
+        }
+    }
+
+    func signIn(email: String, password: String) async {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            let profile = try await service.signIn(email: email, password: password)
+            self.user = profile
+            self.errorMessage = nil
+            debugPrint("[Auth] SignIn success uid=\(profile.id ?? "-") email=\(profile.email)")
+        } catch {
+            let mapped = Self.mapAuthError(error)
+            self.errorMessage = mapped.userMessage
+            debugPrint("[Auth] SignIn failed:", mapped.debugDescription)
+        }
+    }
 
     func signOut() {
         do {
@@ -81,65 +117,60 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Favorites / Watchlist
+    // MARK: - Favorites / Watchlist (typed)
 
-    func toggleFavorite(movieID: Int) async {
-        guard let uid = service.currentUID else {
-            self.errorMessage = "No active session."
-            return
-        }
+    func toggleFavorite(movieID: Int, mediaType: String? = "movie") async {
+        guard let uid = service.currentUID else { self.errorMessage = "No active session."; return }
+        let type = (mediaType ?? "movie").lowercased()
         do {
             let repo = UserProfileRepository()
-            let profile = try await service.fetchProfile(uid: uid)
-            let isFav = profile.favoritesIDs.contains(movieID)
-            if isFav {
-                try await repo.removeFromFavorites(uid: uid, id: movieID)
-                debugPrint("[ToggleFavorite] removed id=\(movieID)")
+            let current = try await service.fetchProfile(uid: uid)
+            let entry = WatchedEntry(id: movieID, type: type)
+            let hasEntry = current.favoritesEntries.contains { $0.id == entry.id && $0.type.lowercased() == entry.type }
+            if hasEntry {
+                try await repo.removeFromFavorites(uid: uid, entry: entry)
+                debugPrint("[ToggleFavoriteTyped] removed entry=\(entry)")
             } else {
-                try await repo.addToFavorites(uid: uid, id: movieID)
-                debugPrint("[ToggleFavorite] added id=\(movieID)")
+                try await repo.addToFavorites(uid: uid, entry: entry)
+                debugPrint("[ToggleFavoriteTyped] added entry=\(entry)")
             }
             try? await Task.sleep(nanoseconds: 150_000_000)
             self.user = try await service.fetchProfile(uid: uid)
             self.listsVersion &+= 1
         } catch {
             self.errorMessage = error.localizedDescription
-            debugPrint("[ToggleFavorite] error:", error.localizedDescription)
+            debugPrint("[ToggleFavoriteTyped] error:", error.localizedDescription)
         }
     }
 
-    func toggleWatchlist(movieID: Int) async {
-        guard let uid = service.currentUID else {
-            self.errorMessage = "No active session."
-            return
-        }
+    func toggleWatchlist(movieID: Int, mediaType: String? = "movie") async {
+        guard let uid = service.currentUID else { self.errorMessage = "No active session."; return }
+        let type = (mediaType ?? "movie").lowercased()
         do {
             let repo = UserProfileRepository()
-            let profile = try await service.fetchProfile(uid: uid)
-            let inWatchlist = profile.watchlistIDs.contains(movieID)
-            if inWatchlist {
-                try await repo.removeFromWatchlist(uid: uid, id: movieID)
-                debugPrint("[ToggleWatchlist] removed id=\(movieID)")
+            let current = try await service.fetchProfile(uid: uid)
+            let entry = WatchedEntry(id: movieID, type: type)
+            let hasEntry = current.watchlistEntries.contains { $0.id == entry.id && $0.type.lowercased() == entry.type }
+            if hasEntry {
+                try await repo.removeFromWatchlist(uid: uid, entry: entry)
+                debugPrint("[ToggleWatchlistTyped] removed entry=\(entry)")
             } else {
-                try await repo.addToWatchlist(uid: uid, id: movieID)
-                debugPrint("[ToggleWatchlist] added id=\(movieID)")
+                try await repo.addToWatchlist(uid: uid, entry: entry)
+                debugPrint("[ToggleWatchlistTyped] added entry=\(entry)")
             }
             try? await Task.sleep(nanoseconds: 150_000_000)
             self.user = try await service.fetchProfile(uid: uid)
             self.listsVersion &+= 1
         } catch {
             self.errorMessage = error.localizedDescription
-            debugPrint("[ToggleWatchlist] error:", error.localizedDescription)
+            debugPrint("[ToggleWatchlistTyped] error:", error.localizedDescription)
         }
     }
 
     // MARK: - Watched (typed)
 
     func toggleWatched(movieID: Int, type: String) async {
-        guard let uid = service.currentUID else {
-            self.errorMessage = "No active session."
-            return
-        }
+        guard let uid = service.currentUID else { self.errorMessage = "No active session."; return }
         let normalizedType = type.lowercased()
         debugPrint("[ToggleWatchedTyped] start id=\(movieID) type=\(normalizedType)")
         do {
@@ -147,12 +178,7 @@ final class AuthViewModel: ObservableObject {
             let current = try await service.fetchProfile(uid: uid)
 
             let entry = WatchedEntry(id: movieID, type: normalizedType)
-            var hasEntry = current.watchedEntries.contains(where: { $0.id == entry.id && $0.type.lowercased() == entry.type })
-
-            // Backward compat: if in legacy watchedIDs and type == movie, consider as present
-            if !hasEntry && entry.type == "movie" && current.watchedIDs.contains(movieID) {
-                hasEntry = true
-            }
+            let hasEntry = current.watchedEntries.contains { $0.id == entry.id && $0.type.lowercased() == entry.type }
 
             if hasEntry {
                 try await repo.removeFromWatched(uid: uid, entry: entry)
@@ -162,7 +188,7 @@ final class AuthViewModel: ObservableObject {
                 debugPrint("[ToggleWatchedTyped] added entry=\(entry)")
             }
 
-            try? await Task.sleep(nanoseconds: 200_000_000) // 0.2s
+            try? await Task.sleep(nanoseconds: 200_000_000)
             self.user = try await service.fetchProfile(uid: uid)
             self.listsVersion &+= 1
             debugPrint("[ToggleWatchedTyped] done. watchedEntries=\(self.user?.watchedEntries.count ?? 0) listsVersion=\(self.listsVersion)")
@@ -172,7 +198,6 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
-    // Backward compat: if caller doesn't know type, assume "movie"
     func toggleWatched(movieID: Int) async {
         await toggleWatched(movieID: movieID, type: "movie")
     }

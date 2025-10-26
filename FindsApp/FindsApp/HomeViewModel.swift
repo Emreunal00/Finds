@@ -6,6 +6,8 @@ import Combine
 final class HomeViewModel: ObservableObject {
     @Published var trending: [Movie] = []
     @Published var suggestions: [Movie] = []
+    @Published var trendingShows: [Movie] = []
+    @Published var suggestedShows: [Movie] = []
     @Published var isLoading = false
     @Published var error: String?
 
@@ -22,9 +24,13 @@ final class HomeViewModel: ObservableObject {
         do {
             async let t = service.getTrending(page: 1)
             async let s = service.getSuggestions(page: 1)
-            let (tr, sg) = try await (t, s)
+            async let tvT = service.getTrendingTV(page: 1)       // NEW
+            async let tvS = service.getSuggestionsTV(page: 1)    // NEW
+            let (tr, sg, trTV, sgTV) = try await (t, s, tvT, tvS)
             trending = tr
             suggestions = sg
+            trendingShows = trTV
+            suggestedShows = sgTV
         } catch {
             self.error = error.localizedDescription
         }

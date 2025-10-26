@@ -4,20 +4,63 @@ import Combine
 struct ContentView: View {
     @EnvironmentObject var authVM: AuthViewModel
     @StateObject private var homeVM = HomeViewModel()
-    // Removed user lists from the home screen; they will load on the profile screen
     @State private var showProfile = false
+
+    private var welcomeTitle: String {
+        let nickname: String = {
+            if let name = authVM.user?.displayName, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return name
+            }
+            if let email = authVM.user?.email, let at = email.firstIndex(of: "@") {
+                let handle = String(email[..<at])
+                if !handle.isEmpty { return handle }
+            }
+            return "User"
+        }()
+        return "Welcome, \(nickname) 👋"
+    }
 
     var body: some View {
         NavigationStack {
             Group {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
-                        // Keep only trending and suggestions on the home screen
+                        // İçerik başlığı (large gibi görünür, ama navbara bağlı değil)
+                        HStack {
+                            Text(welcomeTitle)
+                                .font(.largeTitle).bold()
+                            Spacer()
+                            Menu {
+                                if let name = authVM.user?.displayName, !name.isEmpty {
+                                    Text("Signed in as \(name)")
+                                } else if let email = authVM.user?.email {
+                                    Text("Signed in as \(email)")
+                                }
+
+                                Button {
+                                    showProfile = true
+                                } label: {
+                                    Label("Profile", systemImage: "person")
+                                }
+
+                                Button(role: .destructive) {
+                                    authVM.signOut()
+                                } label: {
+                                    Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                                }
+                            } label: {
+                                Image(systemName: "person.circle")
+                                    .imageScale(.large)
+                            }
+                            .buttonStyle(.plain)
+                        }
+
                         Group {
-                            if homeVM.isLoading && homeVM.trending.isEmpty && homeVM.suggestions.isEmpty {
+                            if homeVM.isLoading && homeVM.trending.isEmpty && homeVM.suggestions.isEmpty && homeVM.trendingShows.isEmpty && homeVM.suggestedShows.isEmpty {
                                 ProgressView("Loading…")
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            } else if let err = homeVM.error, homeVM.trending.isEmpty && homeVM.suggestions.isEmpty {
+                            } else if let err = homeVM.error,
+                                      homeVM.trending.isEmpty && homeVM.suggestions.isEmpty && homeVM.trendingShows.isEmpty && homeVM.suggestedShows.isEmpty {
                                 VStack(spacing: 12) {
                                     Text("Failed to load")
                                         .font(.headline)
@@ -34,54 +77,41 @@ struct ContentView: View {
                             } else {
                                 VStack(alignment: .leading, spacing: 24) {
                                     if !homeVM.trending.isEmpty {
-                                        SectionHeader(title: "Trending")
+                                        SectionHeader(title: "Trending movies")
                                         PosterHScroll(movies: homeVM.trending)
                                     }
 
                                     if !homeVM.suggestions.isEmpty {
-                                        SectionHeader(title: "Suggestions")
+                                        SectionHeader(title: "Top picks for you")
                                         PosterHScroll(movies: homeVM.suggestions)
+                                    }
+
+                                    if !homeVM.trendingShows.isEmpty {
+                                        SectionHeader(title: "Trending shows")
+                                        PosterHScroll(movies: homeVM.trendingShows)
+                                    }
+
+                                    if !homeVM.suggestedShows.isEmpty {
+                                        SectionHeader(title: "Suggested Shows")
+                                        PosterHScroll(movies: homeVM.suggestedShows)
                                     }
                                 }
                             }
                         }
                     }
                     .padding(.horizontal)
-                    .padding(.top, 12)
+                    .padding(.top, 24)
                 }
             }
-            .navigationTitle("Finds")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        if let name = authVM.user?.displayName, !name.isEmpty {
-                            Text("Signed in as \(name)")
-                        } else if let email = authVM.user?.email {
-                            Text("Signed in as \(email)")
-                        }
-
-                        Button {
-                            showProfile = true
-                        } label: {
-                            Label("Profile", systemImage: "person")
-                        }
-
-                        Button(role: .destructive) {
-                            authVM.signOut()
-                        } label: {
-                            Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                        }
-                    } label: {
-                        Image(systemName: "person.circle")
-                    }
-                }
-            }
+            // Navigation bar’ı bu ekranda gizle: mini başlık görünmez
+            .navigationBarHidden(true)
+            // Toolbar kalsa da bar gizli olduğu için görünmez; menüyü içerikte sağ üstte verdik
             .navigationDestination(isPresented: $showProfile) {
                 ProfileView()
                     .environmentObject(authVM)
             }
             .task {
-                if homeVM.trending.isEmpty && homeVM.suggestions.isEmpty {
+                if homeVM.trending.isEmpty && homeVM.suggestions.isEmpty && homeVM.trendingShows.isEmpty && homeVM.suggestedShows.isEmpty {
                     await homeVM.load()
                 }
             }

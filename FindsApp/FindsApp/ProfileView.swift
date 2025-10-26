@@ -107,17 +107,17 @@ struct ProfileView: View {
                         HStack {
                             Label("Favorites", systemImage: "heart.fill").foregroundStyle(.pink)
                             Spacer()
-                            Text("\(u.favoritesIDs.count)").foregroundStyle(.secondary)
+                            Text("\(u.favoritesEntries.count)").foregroundStyle(.secondary)
                         }
                         HStack {
                             Label("Watchlist", systemImage: "bookmark.fill").foregroundStyle(.blue)
                             Spacer()
-                            Text("\(u.watchlistIDs.count)").foregroundStyle(.secondary)
+                            Text("\(u.watchlistEntries.count)").foregroundStyle(.secondary)
                         }
                         HStack {
                             Label("Watched", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                             Spacer()
-                            Text("\(u.watchedEntries.isEmpty ? u.watchedIDs.count : u.watchedEntries.count)").foregroundStyle(.secondary)
+                            Text("\(u.watchedEntries.count)").foregroundStyle(.secondary)
                         }
                     }
                     .padding()
@@ -247,25 +247,21 @@ struct ProfileView: View {
         }
     }
 
-    // MARK: - Data loading
+    // MARK: - Typed entries helpers
 
-    private func currentIDs() -> [Int] {
+    private func currentFavoriteEntries() -> [WatchedEntry] {
         guard let u = authVM.user else { return [] }
-        switch selectedTab {
-        case .favorites: return u.favoritesIDs
-        case .watchlist: return u.watchlistIDs
-        case .watched: return [] // not used anymore
-        }
+        return u.favoritesEntries
+    }
+
+    private func currentWatchlistEntries() -> [WatchedEntry] {
+        guard let u = authVM.user else { return [] }
+        return u.watchlistEntries
     }
 
     private func currentWatchedEntries() -> [WatchedEntry] {
         guard let u = authVM.user else { return [] }
-        if !u.watchedEntries.isEmpty {
-            return u.watchedEntries
-        } else {
-            // fallback legacy: watchedIDs -> movie
-            return u.watchedIDs.map { WatchedEntry(id: $0, type: "movie") }
-        }
+        return u.watchedEntries
     }
 
     private func emptyTitleText(for tab: ListTab) -> String {
@@ -287,45 +283,25 @@ struct ProfileView: View {
     private var emptyTitle: String { emptyTitleText(for: selectedTab) }
     private var emptySubtitle: String { emptySubtitleText(for: selectedTab) }
 
+    // MARK: - Data loading
+
     private func loadCurrentList(limitToFive: Bool) async {
         errorMessage = nil
         isLoading = true
         defer { isLoading = false }
 
         switch selectedTab {
-        case .favorites, .watchlist:
-            let ids = currentIDs()
-            guard !ids.isEmpty else { movies = []; return }
-            let limitedIDs = limitToFive ? Array(ids.prefix(5)) : ids
-            do {
-                let fetched: [Movie] = try await withThrowingTaskGroup(of: (Int, Movie).self) { group in
-                    for id in limitedIDs {
-                        group.addTask {
-                            let m = try await service.fetchMovieBasic(id: id)
-                            return (id, m)
-                        }
-                    }
-                    var items: [(Int, Movie)] = []
-                    while let next = try await group.next() { items.append(next) }
-                    let map = Dictionary(uniqueKeysWithValues: items)
-                    return limitedIDs.compactMap { map[$0] }
-                }
-                movies = fetched
-            } catch {
-                errorMessage = error.localizedDescription
-                movies = []
-            }
-
-        case .watched:
-            let entries = currentWatchedEntries()
+        case .favorites:
+            let entries = currentFavoriteEntries()
             guard !entries.isEmpty else { movies = []; return }
-            let limitedEntries = limitToFive ? Array(entries.prefix(5)) : entries
+            let ordered = Array(entries.reversed())
+            let limited = limitToFive ? Array(ordered.prefix(5)) : ordered
             do {
-                let fetched: [Movie] = try await withThrowingTaskGroup(of: (Int, Movie?).self) { group in
-                    for entry in limitedEntries {
+                let fetched: [Movie] = await withTaskGroup(of: (Int, Movie?).self) { group -> [Movie] in
+                    for entry in limited {
                         group.addTask {
                             do {
-                                if entry.type == "movie" {
+                                if entry.type.lowercased() == "movie" {
                                     let m = try await service.fetchMovieBasic(id: entry.id)
                                     return (entry.id, m)
                                 } else {
@@ -338,15 +314,74 @@ struct ProfileView: View {
                         }
                     }
                     var items: [(Int, Movie?)] = []
-                    while let next = try await group.next() { items.append(next) }
+                    while let next = await group.next() { items.append(next) }
                     let map = Dictionary(uniqueKeysWithValues: items)
-                    let ordered = limitedEntries.compactMap { map[$0.id] ?? nil }
-                    return ordered.compactMap { $0 }
+                    let orderedMovies = limited.compactMap { map[$0.id] ?? nil }
+                    return orderedMovies.compactMap { $0 }
                 }
                 movies = fetched
-            } catch {
-                errorMessage = error.localizedDescription
-                movies = []
+            }
+
+        case .watchlist:
+            let entries = currentWatchlistEntries()
+            guard !entries.isEmpty else { movies = []; return }
+            let ordered = Array(entries.reversed())
+            let limited = limitToFive ? Array(ordered.prefix(5)) : ordered
+            do {
+                let fetched: [Movie] = await withTaskGroup(of: (Int, Movie?).self) { group -> [Movie] in
+                    for entry in limited {
+                        group.addTask {
+                            do {
+                                if entry.type.lowercased() == "movie" {
+                                    let m = try await service.fetchMovieBasic(id: entry.id)
+                                    return (entry.id, m)
+                                } else {
+                                    let tv = try await service.fetchTVBasic(id: entry.id)
+                                    return (entry.id, tv)
+                                }
+                            } catch {
+                                return (entry.id, nil)
+                            }
+                        }
+                    }
+                    var items: [(Int, Movie?)] = []
+                    while let next = await group.next() { items.append(next) }
+                    let map = Dictionary(uniqueKeysWithValues: items)
+                    let orderedMovies = limited.compactMap { map[$0.id] ?? nil }
+                    return orderedMovies.compactMap { $0 }
+                }
+                movies = fetched
+            }
+
+        case .watched:
+            let entries = currentWatchedEntries()
+            guard !entries.isEmpty else { movies = []; return }
+            let ordered = Array(entries.reversed())
+            let limited = limitToFive ? Array(ordered.prefix(5)) : ordered
+            do {
+                let fetched: [Movie] = await withTaskGroup(of: (Int, Movie?).self) { group -> [Movie] in
+                    for entry in limited {
+                        group.addTask {
+                            do {
+                                if entry.type.lowercased() == "movie" {
+                                    let m = try await service.fetchMovieBasic(id: entry.id)
+                                    return (entry.id, m)
+                                } else {
+                                    let tv = try await service.fetchTVBasic(id: entry.id)
+                                    return (entry.id, tv)
+                                }
+                            } catch {
+                                return (entry.id, nil)
+                            }
+                        }
+                    }
+                    var items: [(Int, Movie?)] = []
+                    while let next = await group.next() { items.append(next) }
+                    let map = Dictionary(uniqueKeysWithValues: items)
+                    let orderedMovies = limited.compactMap { map[$0.id] ?? nil }
+                    return orderedMovies.compactMap { $0 }
+                }
+                movies = fetched
             }
         }
     }
@@ -354,20 +389,21 @@ struct ProfileView: View {
     private var showAllButton: Bool {
         guard let u = authVM.user else { return false }
         switch selectedTab {
-        case .favorites: return u.favoritesIDs.count > 5
-        case .watchlist: return u.watchlistIDs.count > 5
+        case .favorites:
+            return u.favoritesEntries.count > 5
+        case .watchlist:
+            return u.watchlistEntries.count > 5
         case .watched:
-            let count = u.watchedEntries.isEmpty ? u.watchedIDs.count : u.watchedEntries.count
-            return count > 5
+            return u.watchedEntries.count > 5
         }
     }
 
     private func removeFromCurrentList(movieID: Int, mediaType: String?) async {
         switch selectedTab {
         case .favorites:
-            await authVM.toggleFavorite(movieID: movieID)
+            await authVM.toggleFavorite(movieID: movieID, mediaType: mediaType ?? "movie")
         case .watchlist:
-            await authVM.toggleWatchlist(movieID: movieID)
+            await authVM.toggleWatchlist(movieID: movieID, mediaType: mediaType ?? "movie")
         case .watched:
             let type = mediaType ?? "movie"
             await authVM.toggleWatched(movieID: movieID, type: type)

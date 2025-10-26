@@ -34,23 +34,20 @@ struct MovieDetailView: View {
 
     private var isFavorite: Bool {
         guard let profile = authVM.user else { return false }
-        return profile.favoritesIDs.contains(movie.id)
+        let type = (movie.mediaType ?? "movie").lowercased()
+        return profile.favoritesEntries.contains { $0.id == movie.id && $0.type.lowercased() == type }
     }
 
     private var isInWatchlist: Bool {
         guard let profile = authVM.user else { return false }
-        return profile.watchlistIDs.contains(movie.id)
+        let type = (movie.mediaType ?? "movie").lowercased()
+        return profile.watchlistEntries.contains { $0.id == movie.id && $0.type.lowercased() == type }
     }
 
     private var isWatched: Bool {
         guard let profile = authVM.user else { return false }
-        // Check typed entries first, then legacy
-        if let entries = profile.watchedEntries as [WatchedEntry]? {
-            if entries.contains(where: { $0.id == movie.id && $0.type == (movie.mediaType ?? "movie") }) {
-                return true
-            }
-        }
-        return profile.watchedIDs.contains(movie.id)
+        let type = (movie.mediaType ?? "movie").lowercased()
+        return profile.watchedEntries.contains { $0.id == movie.id && $0.type.lowercased() == type }
     }
 
     private var headerPoster: some View {
@@ -101,7 +98,8 @@ struct MovieDetailView: View {
     private var actionRow: some View {
         HStack(spacing: 12) {
             Button {
-                Task { await authVM.toggleFavorite(movieID: movie.id) }
+                let type = movie.mediaType ?? "movie"
+                Task { await authVM.toggleFavorite(movieID: movie.id, mediaType: type) }
             } label: {
                 Label(isFavorite ? "Favorited" : "Favorite",
                       systemImage: isFavorite ? "heart.fill" : "heart")
@@ -112,9 +110,10 @@ struct MovieDetailView: View {
             .disabled(authVM.user == nil)
 
             Button {
-                Task { await authVM.toggleWatchlist(movieID: movie.id) }
+                let type = movie.mediaType ?? "movie"
+                Task { await authVM.toggleWatchlist(movieID: movie.id, mediaType: type) }
             } label: {
-                Label(isInWatchlist ? "In Watchlist" : "Watchlist",
+                Label(isInWatchlist ? "Watchlist" : "Watchlist",
                       systemImage: isInWatchlist ? "bookmark.fill" : "bookmark")
                     .labelStyle(.titleAndIcon)
             }
@@ -126,7 +125,7 @@ struct MovieDetailView: View {
                 let type = movie.mediaType ?? "movie"
                 Task { await authVM.toggleWatched(movieID: movie.id, type: type) }
             } label: {
-                Label(isWatched ? "Watched" : "Mark as Watched",
+                Label(isWatched ? "Watched" : "Watched",
                       systemImage: isWatched ? "checkmark.circle.fill" : "checkmark.circle")
                     .labelStyle(.titleAndIcon)
             }
@@ -190,4 +189,3 @@ struct MovieDetailView: View {
             .environmentObject(AuthViewModel())
     }
 }
-

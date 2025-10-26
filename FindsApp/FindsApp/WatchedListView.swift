@@ -1,13 +1,31 @@
 import SwiftUI
 
 struct WatchedListView: View {
+    enum SortOption: String, CaseIterable, Identifiable {
+        case addedNewestFirst = "Newest first"
+        case addedOldestFirst = "Oldest first"
+        case titleAZ = "Title A–Z"
+        case titleZA = "Title Z–A"
+        case yearNewestFirst = "Year ↓"
+        case yearOldestFirst = "Year ↑"
+        case ratingHighFirst = "Rating ↓"
+        case ratingLowFirst = "Rating ↑"
+
+        var id: String { rawValue }
+    }
+
     @EnvironmentObject var authVM: AuthViewModel
     @State private var movies: [Movie] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var sort: SortOption = .addedNewestFirst
+
+    // Orijinal entries sırası (eklenme sırası için)
+    @State private var originalEntries: [WatchedEntry] = []
+
     private let service: MovieServicing = MovieService()
 
-    private var entries: [WatchedEntry] {
+    private var entriesRaw: [WatchedEntry] {
         guard let u = authVM.user else { return [] }
         if !u.watchedEntries.isEmpty {
             return u.watchedEntries
@@ -26,7 +44,7 @@ struct WatchedListView: View {
                     Text(err).font(.footnote).foregroundStyle(.secondary)
                 }
             } else {
-                ForEach(movies) { movie in
+                ForEach(sortedMovies()) { movie in
                     NavigationLink { MovieDetailView(movie: movie) } label: {
                         HStack(spacing: 12) {
                             poster(for: movie)
@@ -50,22 +68,38 @@ struct WatchedListView: View {
             }
         }
         .navigationTitle("All Watched")
+        .toolbar {
+            Menu {
+                Picker("Sort", selection: $sort) {
+                    ForEach(SortOption.allCases) { opt in
+                        Text(opt.rawValue).tag(opt)
+                    }
+                }
+            } label: {
+                Label("Sort", systemImage: "arrow.up.arrow.down.circle")
+            }
+        }
         .task { await loadAll() }
         .onChange(of: authVM.listsVersion) { _ in Task { await loadAll() } }
     }
 
     private func loadAll() async {
-        let es = entries
-        guard !es.isEmpty else {
+        let esRaw = entriesRaw
+        guard !esRaw.isEmpty else {
             movies = []
+            originalEntries = []
             return
         }
+
+        let newestFirst = Array(esRaw.reversed())
+        originalEntries = esRaw
+
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
             let fetched: [Movie] = try await withThrowingTaskGroup(of: (Int, Movie?).self) { group in
-                for entry in es {
+                for entry in newestFirst {
                     group.addTask {
                         do {
                             if entry.type == "movie" {
@@ -83,13 +117,39 @@ struct WatchedListView: View {
                 var items: [(Int, Movie?)] = []
                 while let next = try await group.next() { items.append(next) }
                 let map = Dictionary(uniqueKeysWithValues: items)
-                let ordered = es.compactMap { map[$0.id] ?? nil }
+                let ordered = newestFirst.compactMap { map[$0.id] ?? nil }
                 return ordered.compactMap { $0 }
             }
             movies = fetched
         } catch {
             errorMessage = error.localizedDescription
             movies = []
+        }
+    }
+
+    private func sortedMovies() -> [Movie] {
+        switch sort {
+        case .addedNewestFirst:
+            // newest-first: originalEntries.reversed()
+            let order = Array(originalEntries.reversed()).map { $0.id }
+            let map = Dictionary(uniqueKeysWithValues: movies.map { ($0.id, $0) })
+            return order.compactMap { map[$0] }
+        case .addedOldestFirst:
+            let order = originalEntries.map { $0.id }
+            let map = Dictionary(uniqueKeysWithValues: movies.map { ($0.id, $0) })
+            return order.compactMap { map[$0] }
+        case .titleAZ:
+            return movies.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        case .titleZA:
+            return movies.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedDescending }
+        case .yearNewestFirst:
+            return movies.sorted { $0.year > $1.year }
+        case .yearOldestFirst:
+            return movies.sorted { $0.year < $1.year }
+        case .ratingHighFirst:
+            return movies.sorted { $0.rating > $1.rating }
+        case .ratingLowFirst:
+            return movies.sorted { $0.rating < $1.rating }
         }
     }
 

@@ -20,6 +20,11 @@ struct MainTabView: View {
                     Label("Chat", systemImage: "bubble.left.and.bubble.right.fill")
                 }
 
+            PickerView()
+                .tabItem {
+                    Label("Picker", systemImage: "square.grid.2x2")
+                }
+
             ProfileView()
                 .tabItem {
                     Label("Profile", systemImage: "person.crop.circle")
@@ -32,3 +37,4 @@ struct MainTabView: View {
     MainTabView()
         .environmentObject(AuthViewModel())
 }
+

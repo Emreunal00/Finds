@@ -11,6 +11,10 @@ protocol MovieServicing {
     func fetchTVRuntime(id: Int) async throws -> Int?
     func fetchMovieBasic(id: Int) async throws -> Movie
     func fetchTVBasic(id: Int) async throws -> Movie
+
+    // NEW: TV sections
+    func getTrendingTV(page: Int) async throws -> [Movie]
+    func getSuggestionsTV(page: Int) async throws -> [Movie]
 }
 
 final class MovieService: MovieServicing {
@@ -66,6 +70,68 @@ final class MovieService: MovieServicing {
         let resp = try decode(TMDBMovieResponse.self, from: data, endpoint: "discover/movie")
         var movies = resp.results.map { $0.toMovie() }
         movies = try await enrichMoviesWithRuntime(fromMovies: resp.results, baseMovies: movies)
+        return movies
+    }
+
+    // NEW: Trending TV
+    func getTrendingTV(page: Int = 1) async throws -> [Movie] {
+        var comps = URLComponents(url: TMDBAPI.baseURL.appendingPathComponent("trending/tv/week"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            .init(name: "api_key", value: TMDBAPI.apiKey),
+            .init(name: "language", value: "en-US"),
+            .init(name: "page", value: String(page))
+        ]
+        let url = try comps.asURL()
+        let data = try await requestData(url: url, context: "trending/tv/week", maxRetries: 3, initialDelay: 0.8)
+        // Reuse TMDBMovieResponse structure for tv too (fields align for id/title-like mapping we do)
+        let resp = try decode(TMDBMovieResponse.self, from: data, endpoint: "trending/tv/week")
+        // Map as TV summaries (using TMDBTVSummary-like mapping is not necessary here; we treat multi result mapping style)
+        // Here we convert TMDBMovie to Movie but mark as "tv" based on firstAirDate/name if needed.
+        // Simpler: convert using TMDBMultiResult-like mapping; but we don't have it here. We’ll adapt TMDBMovie.toMovie and override mediaType.
+        var movies = resp.results.map { tm in
+            var m = tm.toMovie()
+            m.mediaType = "tv"
+            return m
+        }
+        // Enrich with TV runtimes (episodeRunTime) for first N items
+        let slice = Array(resp.results.prefix(maxRuntimeEnrichmentCount))
+        let ids = slice.map { $0.id }
+        let runtimeMap = try await fetchRuntimesLimited(ids: ids, isTV: true)
+        for (idx, tm) in slice.enumerated() {
+            if idx < movies.count {
+                movies[idx].durationMinutes = runtimeMap[tm.id] ?? nil
+            }
+        }
+        return movies
+    }
+
+    // NEW: Suggested TV (Discover TV)
+    func getSuggestionsTV(page: Int = 1) async throws -> [Movie] {
+        var comps = URLComponents(url: TMDBAPI.baseURL.appendingPathComponent("discover/tv"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            .init(name: "api_key", value: TMDBAPI.apiKey),
+            .init(name: "language", value: "en-US"),
+            .init(name: "sort_by", value: "popularity.desc"),
+            .init(name: "vote_average.gte", value: "6.5"),
+            .init(name: "page", value: String(page))
+        ]
+        let url = try comps.asURL()
+        let data = try await requestData(url: url, context: "discover/tv", maxRetries: 3, initialDelay: 0.8)
+        let resp = try decode(TMDBMovieResponse.self, from: data, endpoint: "discover/tv")
+        var movies = resp.results.map { tm in
+            var m = tm.toMovie()
+            m.mediaType = "tv"
+            return m
+        }
+        // Optional TV runtime enrichment for first N items
+        let slice = Array(resp.results.prefix(maxRuntimeEnrichmentCount))
+        let ids = slice.map { $0.id }
+        let runtimeMap = try await fetchRuntimesLimited(ids: ids, isTV: true)
+        for (idx, tm) in slice.enumerated() {
+            if idx < movies.count {
+                movies[idx].durationMinutes = runtimeMap[tm.id] ?? nil
+            }
+        }
         return movies
     }
 
@@ -260,14 +326,13 @@ final class MovieService: MovieServicing {
         let data = try await requestData(url: url, context: "person/\(personId)/combined_credits", maxRetries: 3, initialDelay: 0.8)
         let resp = try decode(TMDBCombinedCredits.self, from: data, endpoint: "person/\(personId)/combined_credits")
 
-        // Prefer cast credits (acting roles). Map only movie/tv entries.
         let castMovies = resp.cast.compactMap { $0.toMovieIfSupported() }
-
-        // Optionally include crew entries that are not duplicates (e.g., directing/writing)
-        // If you want only cast, return castMovies directly.
         let existingIDs = Set(castMovies.map { $0.id })
-        let crewMovies = (resp.crew ?? []).compactMap { $0.mediaType == "movie" || $0.mediaType == "tv" ? TMDBCombinedCast(id: $0.id, mediaType: $0.mediaType, title: $0.title, name: $0.name, releaseDate: $0.releaseDate, firstAirDate: $0.firstAirDate, posterPath: $0.posterPath, voteAverage: $0.voteAverage, overview: $0.overview, genreIDs: $0.genreIDs).toMovieIfSupported() : nil }
-            .filter { !existingIDs.contains($0.id) }
+        let crewMovies = (resp.crew ?? []).compactMap {
+            $0.mediaType == "movie" || $0.mediaType == "tv"
+            ? TMDBCombinedCast(id: $0.id, mediaType: $0.mediaType, title: $0.title, name: $0.name, releaseDate: $0.releaseDate, firstAirDate: $0.firstAirDate, posterPath: $0.posterPath, voteAverage: $0.voteAverage, overview: $0.overview, genreIDs: $0.genreIDs).toMovieIfSupported()
+            : nil
+        }.filter { !existingIDs.contains($0.id) }
 
         return castMovies + crewMovies
     }

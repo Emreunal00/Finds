@@ -12,11 +12,16 @@ struct UserProfile: Codable, Identifiable, Equatable {
     var displayName: String?
     var photoURL: String?
     var createdAt: Date
+
+    // Legacy simple ID lists
     var watchlistIDs: [Int]
     var watchedIDs: [Int]            // legacy support
     var favoritesIDs: [Int]
-    // NEW: typed watched entries
+
+    // Typed entries
     var watchedEntries: [WatchedEntry]
+    var favoritesEntries: [WatchedEntry]
+    var watchlistEntries: [WatchedEntry]
 
     init(id: String? = nil,
          email: String,
@@ -26,7 +31,9 @@ struct UserProfile: Codable, Identifiable, Equatable {
          watchlistIDs: [Int] = [],
          watchedIDs: [Int] = [],
          favoritesIDs: [Int] = [],
-         watchedEntries: [WatchedEntry] = []) {
+         watchedEntries: [WatchedEntry] = [],
+         favoritesEntries: [WatchedEntry] = [],
+         watchlistEntries: [WatchedEntry] = []) {
         self.id = id
         self.email = email
         self.displayName = displayName
@@ -36,6 +43,8 @@ struct UserProfile: Codable, Identifiable, Equatable {
         self.watchedIDs = watchedIDs
         self.favoritesIDs = favoritesIDs
         self.watchedEntries = watchedEntries
+        self.favoritesEntries = favoritesEntries
+        self.watchlistEntries = watchlistEntries
     }
 }
 
@@ -49,7 +58,9 @@ extension UserProfile {
                     watchlistIDs: [],
                     watchedIDs: [],
                     favoritesIDs: [],
-                    watchedEntries: [])
+                    watchedEntries: [],
+                    favoritesEntries: [],
+                    watchlistEntries: [])
     }
 }
 
@@ -70,7 +81,9 @@ final class UserProfileRepository {
             "watchlistIDs": profile.watchlistIDs,
             "watchedIDs": profile.watchedIDs,
             "favoritesIDs": profile.favoritesIDs,
-            "watchedEntries": profile.watchedEntries.map { ["id": $0.id, "type": $0.type] }
+            "watchedEntries": profile.watchedEntries.map { ["id": $0.id, "type": $0.type] },
+            "favoritesEntries": profile.favoritesEntries.map { ["id": $0.id, "type": $0.type] },
+            "watchlistEntries": profile.watchlistEntries.map { ["id": $0.id, "type": $0.type] }
         ].merging(optional: [
             "displayName": profile.displayName,
             "photoURL": profile.photoURL
@@ -123,15 +136,12 @@ final class UserProfileRepository {
             if let arr = any as? [String] {
                 return arr.compactMap { Int($0.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()) }
             }
+            if let arr = any as? [NSNumber] { return arr.map { $0.intValue } }
             return []
         }
 
-        let watchlistIDs = ints(from: dict["watchlistIDs"])
-        let watchedIDs = ints(from: dict["watchedIDs"])
-        let favoritesIDs = ints(from: dict["favoritesIDs"])
-
-        let watchedEntries: [WatchedEntry] = {
-            if let arr = dict["watchedEntries"] as? [[String: Any]] {
+        func entries(from any: Any?) -> [WatchedEntry] {
+            if let arr = any as? [[String: Any]] {
                 return arr.compactMap { m in
                     if let id = m["id"] as? Int, let type = m["type"] as? String {
                         return WatchedEntry(id: id, type: type)
@@ -140,12 +150,39 @@ final class UserProfileRepository {
                     }
                     return nil
                 }
-            } else if !watchedIDs.isEmpty {
-                // backward compatibility: assume movie
-                return watchedIDs.map { WatchedEntry(id: $0, type: "movie") }
-            } else {
-                return []
             }
+            return []
+        }
+
+        let watchlistIDs = ints(from: dict["watchlistIDs"])
+        let watchedIDs = ints(from: dict["watchedIDs"])
+        let favoritesIDs = ints(from: dict["favoritesIDs"])
+
+        let watchedEntries: [WatchedEntry] = {
+            let typed = entries(from: dict["watchedEntries"])
+            if !typed.isEmpty { return typed }
+            if !watchedIDs.isEmpty {
+                return watchedIDs.map { WatchedEntry(id: $0, type: "movie") }
+            }
+            return []
+        }()
+
+        let favoritesEntries: [WatchedEntry] = {
+            let typed = entries(from: dict["favoritesEntries"])
+            if !typed.isEmpty { return typed }
+            if !favoritesIDs.isEmpty {
+                return favoritesIDs.map { WatchedEntry(id: $0, type: "movie") }
+            }
+            return []
+        }()
+
+        let watchlistEntries: [WatchedEntry] = {
+            let typed = entries(from: dict["watchlistEntries"])
+            if !typed.isEmpty { return typed }
+            if !watchlistIDs.isEmpty {
+                return watchlistIDs.map { WatchedEntry(id: $0, type: "movie") }
+            }
+            return []
         }()
 
         return UserProfile(
@@ -157,7 +194,9 @@ final class UserProfileRepository {
             watchlistIDs: watchlistIDs,
             watchedIDs: watchedIDs,
             favoritesIDs: favoritesIDs,
-            watchedEntries: watchedEntries
+            watchedEntries: watchedEntries,
+            favoritesEntries: favoritesEntries,
+            watchlistEntries: watchlistEntries
         )
     }
 
@@ -178,36 +217,50 @@ final class UserProfileRepository {
         }
     }
 
+    // Favorites (legacy)
     func addToFavorites(uid: String, id: Int) async throws {
         try await updateArrayField(uid: uid, field: "favoritesIDs", add: [id])
     }
-
     func removeFromFavorites(uid: String, id: Int) async throws {
         try await updateArrayField(uid: uid, field: "favoritesIDs", remove: [id])
     }
 
+    // Watchlist (legacy)
     func addToWatchlist(uid: String, id: Int) async throws {
         try await updateArrayField(uid: uid, field: "watchlistIDs", add: [id])
     }
-
     func removeFromWatchlist(uid: String, id: Int) async throws {
         try await updateArrayField(uid: uid, field: "watchlistIDs", remove: [id])
     }
 
-    // NEW: typed watched entries
+    // Watched (typed)
     func addToWatched(uid: String, entry: WatchedEntry) async throws {
         try await updateArrayField(uid: uid, field: "watchedEntries", add: [["id": entry.id, "type": entry.type]])
     }
-
     func removeFromWatched(uid: String, entry: WatchedEntry) async throws {
         try await updateArrayField(uid: uid, field: "watchedEntries", remove: [["id": entry.id, "type": entry.type]])
+    }
+
+    // Favorites (typed)
+    func addToFavorites(uid: String, entry: WatchedEntry) async throws {
+        try await updateArrayField(uid: uid, field: "favoritesEntries", add: [["id": entry.id, "type": entry.type]])
+    }
+    func removeFromFavorites(uid: String, entry: WatchedEntry) async throws {
+        try await updateArrayField(uid: uid, field: "favoritesEntries", remove: [["id": entry.id, "type": entry.type]])
+    }
+
+    // Watchlist (typed)
+    func addToWatchlist(uid: String, entry: WatchedEntry) async throws {
+        try await updateArrayField(uid: uid, field: "watchlistEntries", add: [["id": entry.id, "type": entry.type]])
+    }
+    func removeFromWatchlist(uid: String, entry: WatchedEntry) async throws {
+        try await updateArrayField(uid: uid, field: "watchlistEntries", remove: [["id": entry.id, "type": entry.type]])
     }
 
     // Backward-compat (not used after migration, but keep)
     func addToWatched(uid: String, id: Int) async throws {
         try await updateArrayField(uid: uid, field: "watchedIDs", add: [id])
     }
-
     func removeFromWatched(uid: String, id: Int) async throws {
         try await updateArrayField(uid: uid, field: "watchedIDs", remove: [id])
     }
@@ -222,4 +275,3 @@ private extension Dictionary where Key == String, Value == Any {
         return result
     }
 }
-
