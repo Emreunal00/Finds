@@ -19,6 +19,17 @@ final class SearchViewModel: ObservableObject {
         self.service = service
     }
 
+    func reset() {
+        print("[SearchVM] reset")
+        keyword = ""
+        selectedGenreID = nil
+        selectedYear = nil
+        results = []
+        isLoading = false
+        error = nil
+        // genres listesi yüklendiyse kalsın
+    }
+
     func loadGenres() async {
         print("[SearchVM] loadGenres start")
         do {
@@ -108,6 +119,32 @@ final class SearchViewModel: ObservableObject {
         } catch {
             self.error = error.localizedDescription
             print("[SearchVM] search error:", error)
+        }
+        isLoading = false
+    }
+
+    // Janra bazlı gerçek içerik (discover movie+tv) — her tıklamada farklı sayfa
+    func searchByGenre(genreID: Int) async {
+        guard !isLoading else {
+            print("[SearchVM] searchByGenre skipped: already loading")
+            return
+        }
+        isLoading = true
+        error = nil
+        selectedGenreID = genreID
+
+        // Basit çeşitlilik: 1...5 arası rastgele sayfa. İsterseniz 1...10 yapabilirsiniz.
+        let randomPage = Int.random(in: 1...5)
+        print("[SearchVM] discover start genreID=\(genreID) page=\(randomPage)")
+
+        do {
+            let movies = try await service.discoverMixed(genreID: genreID, page: randomPage)
+            results = movies
+            print("[SearchVM] discover done, results: \(movies.count)")
+        } catch {
+            self.error = error.localizedDescription
+            print("[SearchVM] discover error:", error)
+            results = []
         }
         isLoading = false
     }

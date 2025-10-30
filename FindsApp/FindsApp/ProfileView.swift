@@ -7,6 +7,7 @@ struct ProfileView: View {
     @State private var errorMessage: String?
     @State private var movies: [Movie] = []
     @State private var navPath = NavigationPath()
+    @State private var showingEditProfile = false
     private let service: MovieServicing = MovieService()
 
     enum ListTab: String, CaseIterable, Identifiable {
@@ -65,6 +66,10 @@ struct ProfileView: View {
                 .padding(.bottom, 16)
             }
             .navigationTitle("Profile")
+            .sheet(isPresented: $showingEditProfile) {
+                EditProfileView()
+                    .environmentObject(authVM)
+            }
             .onAppear { Task { await loadCurrentList(limitToFive: true) } }
             .onChange(of: authVM.listsVersion) { _ in Task { await loadCurrentList(limitToFive: true) } }
             .navigationDestination(for: ListTab.self) { tab in
@@ -92,6 +97,23 @@ struct ProfileView: View {
                         Text(email).font(.subheadline).foregroundStyle(.secondary)
                     }
                     Spacer()
+                    // OK butonu: EditProfileView'i açar
+                    Button {
+                        showingEditProfile = true
+                    } label: {
+                        Image(systemName: "chevron.right.circle.fill")
+                            .imageScale(.large)
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(6)
+                            .background(
+                                Circle()
+                                    .fill(Color(.secondarySystemBackground))
+                            )
+                            .accessibilityLabel("Edit Profile")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(authVM.user == nil)
                 }
                 .padding()
                 .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))

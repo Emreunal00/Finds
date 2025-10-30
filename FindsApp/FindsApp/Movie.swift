@@ -13,6 +13,13 @@ struct Movie: Identifiable, Equatable, Codable {
     // NEW: mediaType ("movie" or "tv")
     var mediaType: String?
 
+    // NEW: Credits fields
+    var cast: [String]?
+    var directors: [String]?
+
+    // NEW: Popularity (for sorting search results)
+    var popularity: Double?
+
     init(
         id: Int,
         title: String,
@@ -23,7 +30,10 @@ struct Movie: Identifiable, Equatable, Codable {
         summary: String = "",
         posterURL: URL? = nil,
         durationMinutes: Int? = nil,
-        mediaType: String? = nil
+        mediaType: String? = nil,
+        cast: [String]? = nil,
+        directors: [String]? = nil,
+        popularity: Double? = nil
     ) {
         self.id = id
         self.title = title
@@ -35,6 +45,9 @@ struct Movie: Identifiable, Equatable, Codable {
         self.posterURL = posterURL
         self.durationMinutes = durationMinutes
         self.mediaType = mediaType
+        self.cast = cast
+        self.directors = directors
+        self.popularity = popularity
     }
 }
 

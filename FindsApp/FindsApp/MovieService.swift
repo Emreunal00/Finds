@@ -15,6 +15,9 @@ protocol MovieServicing {
     // NEW: TV sections
     func getTrendingTV(page: Int) async throws -> [Movie]
     func getSuggestionsTV(page: Int) async throws -> [Movie]
+
+    // NEW: Mixed discover by genre (movie + tv)
+    func discoverMixed(genreID: Int, page: Int) async throws -> [Movie]
 }
 
 final class MovieService: MovieServicing {
@@ -335,6 +338,67 @@ final class MovieService: MovieServicing {
         }.filter { !existingIDs.contains($0.id) }
 
         return castMovies + crewMovies
+    }
+
+    // NEW: Mixed discover implementation
+    func discoverMixed(genreID: Int, page: Int = 1) async throws -> [Movie] {
+        // Build endpoints
+        func buildDiscoverURL(path: String) throws -> URL {
+            var comps = URLComponents(url: TMDBAPI.baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
+            comps.queryItems = [
+                .init(name: "api_key", value: TMDBAPI.apiKey),
+                .init(name: "language", value: "en-US"),
+                .init(name: "sort_by", value: "popularity.desc"),
+                .init(name: "with_genres", value: String(genreID)),
+                .init(name: "page", value: String(page))
+            ]
+            return try comps.asURL()
+        }
+
+        async let movieDataTask: Data = {
+            let url = try! buildDiscoverURL(path: "discover/movie")
+            return try await requestData(url: url, context: "discover/movie", maxRetries: 3, initialDelay: 0.8)
+        }()
+
+        async let tvDataTask: Data = {
+            let url = try! buildDiscoverURL(path: "discover/tv")
+            return try await requestData(url: url, context: "discover/tv", maxRetries: 3, initialDelay: 0.8)
+        }()
+
+        let (movieData, tvData) = try await (movieDataTask, tvDataTask)
+
+        let movieResp = try decode(TMDBMovieResponse.self, from: movieData, endpoint: "discover/movie")
+        let tvResp = try decode(TMDBMovieResponse.self, from: tvData, endpoint: "discover/tv")
+
+        var movieItems = movieResp.results.map { $0.toMovie() }
+        // Enrich first N movie runtimes
+        movieItems = try await enrichMoviesWithRuntime(fromMovies: movieResp.results, baseMovies: movieItems)
+
+        var tvItems: [Movie] = tvResp.results.map { tm in
+            var m = tm.toMovie()
+            m.mediaType = "tv"
+            return m
+        }
+        // Enrich first N tv runtimes
+        let tvSlice = Array(tvResp.results.prefix(maxRuntimeEnrichmentCount))
+        let tvIDs = tvSlice.map { $0.id }
+        let tvRuntimeMap = try await fetchRuntimesLimited(ids: tvIDs, isTV: true)
+        for (idx, tm) in tvSlice.enumerated() {
+            if idx < tvItems.count {
+                tvItems[idx].durationMinutes = tvRuntimeMap[tm.id] ?? nil
+            }
+        }
+
+        // Merge and sort by popularity desc (fallback to rating then title)
+        var merged = movieItems + tvItems
+        merged.sort { lhs, rhs in
+            let lp = lhs.popularity ?? -1
+            let rp = rhs.popularity ?? -1
+            if lp != rp { return lp > rp }
+            if lhs.rating != rhs.rating { return lhs.rating > rhs.rating }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
+        return merged
     }
 
     private func requestData(url: URL, context: String, maxRetries: Int = 3, initialDelay: TimeInterval = 0.8) async throws -> Data {

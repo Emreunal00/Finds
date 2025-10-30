@@ -34,6 +34,9 @@ struct TMDBMovie: Codable {
     let voteAverage: Double?
     let overview: String?
     let genreIDs: [Int]?
+
+    // NEW: popularity
+    let popularity: Double?
 }
 
 struct TMDBMultiSearchResponse: Codable {
@@ -54,6 +57,9 @@ struct TMDBMultiResult: Codable {
     let voteAverage: Double?
     let overview: String?
     let genreIDs: [Int]?
+
+    // NEW: popularity
+    let popularity: Double?
 }
 
 struct TMDBGenreList: Codable {
@@ -73,9 +79,20 @@ struct TMDBMovieDetail: Codable {
 struct TMDBTVDetail: Codable {
     let id: Int
     let episodeRunTime: [Int]?
+
+    // NEW: Created by (for TV shows)
+    let createdBy: [TMDBCreatedBy]?
 }
 
-// Combined credits
+struct TMDBCreatedBy: Codable {
+    let id: Int?
+    let creditId: String?
+    let name: String?
+    let gender: Int?
+    let profilePath: String?
+}
+
+// Combined credits (already used elsewhere)
 struct TMDBCombinedCredits: Codable {
     let id: Int
     let cast: [TMDBCombinedCast]
@@ -108,6 +125,29 @@ struct TMDBCombinedCrew: Codable {
     let genreIDs: [Int]?
 }
 
+// NEW: Credits DTOs for movie/tv credits endpoints
+struct TMDBCredits: Codable {
+    let id: Int?
+    let cast: [TMDBCastMember]
+    let crew: [TMDBCrewMember]
+}
+
+struct TMDBCastMember: Codable {
+    let id: Int?
+    let name: String?
+    let character: String?
+    let order: Int?
+    let profilePath: String?
+}
+
+struct TMDBCrewMember: Codable {
+    let id: Int?
+    let name: String?
+    let job: String?
+    let department: String?
+    let profilePath: String?
+}
+
 // MARK: - Mapping to app model
 
 extension TMDBMovie {
@@ -132,7 +172,10 @@ extension TMDBMovie {
             summary: overview ?? "",
             posterURL: posterURL,
             durationMinutes: nil,
-            mediaType: "movie" // this struct represents movie endpoint items
+            mediaType: "movie", // this struct represents movie endpoint items
+            cast: nil,
+            directors: nil,
+            popularity: popularity
         )
     }
 }
@@ -161,7 +204,10 @@ extension TMDBMultiResult {
             summary: overview ?? "",
             posterURL: posterURL,
             durationMinutes: nil,
-            mediaType: mt
+            mediaType: mt,
+            cast: nil,
+            directors: nil,
+            popularity: popularity
         )
     }
 }
@@ -185,7 +231,10 @@ extension TMDBCombinedCast {
             summary: overview ?? "",
             posterURL: TMDBAPI.posterURL(path: posterPath),
             durationMinutes: nil,
-            mediaType: mt
+            mediaType: mt,
+            cast: nil,
+            directors: nil,
+            popularity: nil
         )
     }
 }

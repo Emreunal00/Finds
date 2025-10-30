@@ -1,23 +1,15 @@
 import SwiftUI
 
 struct SearchView: View {
+    @Binding var resetToken: Int
+
     @StateObject private var vm = SearchViewModel()
     @FocusState private var searchFocused: Bool
     @State private var hasSearched: Bool = false
 
-    // Basit öneri kümesi (istersen ViewModel’e taşıyabilir veya sunucudan çekebilirsin)
-    private let suggestions: [String] = [
-        "Popular this week",
-        "Top rated",
-        "Sci‑Fi",
-        "Comedy",
-        "Action",
-        "Drama",
-        "Oscar winners",
-        "Family",
-        "2024 releases",
-        "Classic movies"
-    ]
+    init(resetToken: Binding<Int> = .constant(0)) {
+        self._resetToken = resetToken
+    }
 
     var body: some View {
         NavigationStack {
@@ -33,13 +25,19 @@ struct SearchView: View {
                     await vm.loadGenres()
                 }
             }
+            .onChange(of: resetToken) { _ in
+                // Tab yeniden seçildiğinde Search başlangıç haline dön
+                vm.reset()
+                hasSearched = false
+                searchFocused = false
+            }
         }
     }
 
-    // MARK: - Search controls (always at top with Genre/Year)
+    // MARK: - Search controls
     private var searchControlsTop: some View {
         HStack(spacing: 8) {
-            // Left: search field + search button
+            // Arama alanı + ARAMA butonu (buton sadece arama yapar; reset yapmaz)
             HStack(spacing: 10) {
                 TextField("Search for a movie or TV show…", text: $vm.keyword)
                     .textInputAutocapitalization(.never)
@@ -77,7 +75,7 @@ struct SearchView: View {
 
             Spacer(minLength: 8)
 
-            // Right: Genre and Year icon buttons
+            // Sağdaki filtre ikonları (janra/yıl)
             HStack(spacing: 10) {
                 Menu {
                     Picker("Genre", selection: $vm.selectedGenreID) {
@@ -125,34 +123,30 @@ struct SearchView: View {
     @ViewBuilder
     private var content: some View {
         if vm.isLoading {
-            ProgressView("Searching…")
+            ProgressView("Loading…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if !hasSearched {
-            // Arama yapılmadan önce: öneriler
-            suggestionsView
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else if let err = vm.error {
             VStack(spacing: 8) {
-                Text("Search failed")
+                Text("Failed")
                     .font(.headline)
                 Text(err)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 Button("Retry") {
-                    Task { await vm.search() }
+                    Task {
+                        if let gid = vm.selectedGenreID {
+                            await vm.searchByGenre(genreID: gid)
+                        } else if !vm.keyword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            await vm.search()
+                        }
+                    }
                 }
                 .buttonStyle(.borderedProminent)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if vm.results.isEmpty {
-            VStack(spacing: 8) {
-                Text("No results")
-                    .font(.headline)
-                Text("Try another keyword or adjust filters.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            genresGrid
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
@@ -192,26 +186,24 @@ struct SearchView: View {
         }
     }
 
-    // MARK: - Suggestions
-    private var suggestionsView: some View {
+    // MARK: - Genres grid
+    private var genresGrid: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Suggestions")
+            Text("Genres")
                 .font(.headline)
 
-            // Basit chip düzeni
             let columns = [GridItem(.adaptive(minimum: 110), spacing: 8)]
             LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                ForEach(suggestions, id: \.self) { s in
+                ForEach(vm.genres) { genre in
                     Button {
-                        // Öneriye tıklanınca arama yap
-                        vm.keyword = s
+                        vm.selectedGenreID = genre.id
                         hasSearched = true
-                        Task { await vm.search() }
+                        Task { await vm.searchByGenre(genreID: genre.id) }
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "sparkles")
+                            Image(systemName: "tag.fill")
                                 .symbolRenderingMode(.hierarchical)
-                            Text(s)
+                            Text(genre.name)
                                 .lineLimit(1)
                         }
                         .font(.footnote)
@@ -234,10 +226,7 @@ struct SearchView: View {
             AsyncImage(url: url) { phase in
                 switch phase {
                 case .empty:
-                    ZStack {
-                        Color(.tertiarySystemFill)
-                        ProgressView()
-                    }
+                    ZStack { Color(.tertiarySystemFill); ProgressView() }
                 case .success(let image):
                     image.resizable().scaledToFill()
                 case .failure:
@@ -266,5 +255,5 @@ struct SearchView: View {
 }
 
 #Preview {
-    SearchView()
+    SearchView(resetToken: .constant(0))
 }

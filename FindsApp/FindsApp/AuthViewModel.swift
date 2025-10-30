@@ -30,14 +30,12 @@ final class AuthViewModel: ObservableObject {
 
         if let uid {
             do {
-                // Initial profile
                 let profile = try await service.fetchProfile(uid: uid)
                 self.user = profile
                 self.errorMessage = nil
                 debugPrint("[Auth] Auth state changed -> signed in uid=\(uid)")
                 debugPrint("[Auth] Initial profile fetched. favEntries=\(profile.favoritesEntries.count) watchEntries=\(profile.watchlistEntries.count) watched=\(profile.watchedEntries.count)")
 
-                // Realtime listener
                 profileObserver = service.observeProfile(uid: uid) { [weak self] result in
                     Task { @MainActor in
                         switch result {
@@ -52,7 +50,6 @@ final class AuthViewModel: ObservableObject {
                 }
                 debugPrint("[Auth] Profile listener started")
             } catch {
-                // Do not show error to user here; listener will likely deliver shortly.
                 debugPrint("[Auth] Fetch profile failed (will rely on listener):", error.localizedDescription)
             }
         } else {
@@ -66,17 +63,13 @@ final class AuthViewModel: ObservableObject {
     func signUp(email: String, password: String, displayName: String?) async {
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false } // Critically stop blocking UI regardless of fetch timing
+        defer { isLoading = false }
         do {
-            // This creates the auth user and writes the profile. It also tries to fetch,
-            // but even if that fetch struggles, our auth state listener will kick in.
             let profile = try await service.signUp(email: email, password: password, displayName: displayName)
-            // Optimistic: if we have it, set immediately. If not, handleAuthChange will set soon.
             self.user = profile
             self.errorMessage = nil
             debugPrint("[Auth] SignUp success uid=\(profile.id ?? "-") email=\(profile.email)")
         } catch {
-            // If createUser succeeded but fetch failed transiently, handleAuthChange will still run.
             let mapped = Self.mapAuthError(error)
             self.errorMessage = mapped.userMessage
             debugPrint("[Auth] SignUp failed:", mapped.debugDescription)
@@ -117,93 +110,163 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Favorites / Watchlist (typed)
+    // MARK: - Profile updates
 
-    func toggleFavorite(movieID: Int, mediaType: String? = "movie") async {
+    func updateDisplayName(_ newName: String) async {
         guard let uid = service.currentUID else { self.errorMessage = "No active session."; return }
-        let type = (mediaType ?? "movie").lowercased()
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { self.errorMessage = "Display name cannot be empty."; return }
+
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
         do {
+            // Update Firebase Auth displayName
+            if let user = Auth.auth().currentUser {
+                let change = user.createProfileChangeRequest()
+                change.displayName = trimmed
+                try await change.commitChanges()
+            }
+
+            // Merge into Firestore profile
+            var current = try await service.fetchProfile(uid: uid)
+            current.displayName = trimmed
             let repo = UserProfileRepository()
-            let current = try await service.fetchProfile(uid: uid)
-            let entry = WatchedEntry(id: movieID, type: type)
-            let hasEntry = current.favoritesEntries.contains { $0.id == entry.id && $0.type.lowercased() == entry.type }
-            if hasEntry {
+            try await repo.createOrMerge(current)
+
+            // Refresh local state
+            self.user = try await service.fetchProfile(uid: uid)
+            debugPrint("[Auth] updateDisplayName success -> \(trimmed)")
+        } catch {
+            self.errorMessage = error.localizedDescription
+            debugPrint("[Auth] updateDisplayName error:", error.localizedDescription)
+        }
+    }
+
+    func updatePhotoURL(_ url: String) async {
+        guard let uid = service.currentUID else { self.errorMessage = "No active session."; return }
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        do {
+            // Update Firebase Auth photoURL (optional)
+            if let user = Auth.auth().currentUser, let photoURL = URL(string: url) {
+                let change = user.createProfileChangeRequest()
+                change.photoURL = photoURL
+                try await change.commitChanges()
+            }
+
+            // Merge into Firestore
+            var current = try await service.fetchProfile(uid: uid)
+            current.photoURL = url
+            let repo = UserProfileRepository()
+            try await repo.createOrMerge(current)
+
+            // Refresh local state
+            self.user = try await service.fetchProfile(uid: uid)
+            debugPrint("[Auth] updatePhotoURL success")
+        } catch {
+            self.errorMessage = error.localizedDescription
+            debugPrint("[Auth] updatePhotoURL error:", error.localizedDescription)
+        }
+    }
+
+    // MARK: - List toggles (typed entries)
+
+    func toggleFavorite(movieID: Int, mediaType: String) async {
+        guard let uid = service.currentUID, var profile = self.user else {
+            self.errorMessage = "No active session."
+            return
+        }
+        let type = mediaType.lowercased()
+        let entry = WatchedEntry(id: movieID, type: type)
+        let repo = UserProfileRepository()
+
+        if let idx = profile.favoritesEntries.firstIndex(where: { $0.id == movieID && $0.type.lowercased() == type }) {
+            do {
                 try await repo.removeFromFavorites(uid: uid, entry: entry)
-                debugPrint("[ToggleFavoriteTyped] removed entry=\(entry)")
-            } else {
+                profile.favoritesEntries.remove(at: idx)
+                self.user = profile
+                self.listsVersion &+= 1
+            } catch {
+                self.errorMessage = error.localizedDescription
+            }
+        } else {
+            do {
                 try await repo.addToFavorites(uid: uid, entry: entry)
-                debugPrint("[ToggleFavoriteTyped] added entry=\(entry)")
+                profile.favoritesEntries.append(entry)
+                self.user = profile
+                self.listsVersion &+= 1
+            } catch {
+                self.errorMessage = error.localizedDescription
             }
-            try? await Task.sleep(nanoseconds: 150_000_000)
-            self.user = try await service.fetchProfile(uid: uid)
-            self.listsVersion &+= 1
-        } catch {
-            self.errorMessage = error.localizedDescription
-            debugPrint("[ToggleFavoriteTyped] error:", error.localizedDescription)
         }
     }
 
-    func toggleWatchlist(movieID: Int, mediaType: String? = "movie") async {
-        guard let uid = service.currentUID else { self.errorMessage = "No active session."; return }
-        let type = (mediaType ?? "movie").lowercased()
-        do {
-            let repo = UserProfileRepository()
-            let current = try await service.fetchProfile(uid: uid)
-            let entry = WatchedEntry(id: movieID, type: type)
-            let hasEntry = current.watchlistEntries.contains { $0.id == entry.id && $0.type.lowercased() == entry.type }
-            if hasEntry {
+    func toggleWatchlist(movieID: Int, mediaType: String) async {
+        guard let uid = service.currentUID, var profile = self.user else {
+            self.errorMessage = "No active session."
+            return
+        }
+        let type = mediaType.lowercased()
+        let entry = WatchedEntry(id: movieID, type: type)
+        let repo = UserProfileRepository()
+
+        if let idx = profile.watchlistEntries.firstIndex(where: { $0.id == movieID && $0.type.lowercased() == type }) {
+            do {
                 try await repo.removeFromWatchlist(uid: uid, entry: entry)
-                debugPrint("[ToggleWatchlistTyped] removed entry=\(entry)")
-            } else {
-                try await repo.addToWatchlist(uid: uid, entry: entry)
-                debugPrint("[ToggleWatchlistTyped] added entry=\(entry)")
+                profile.watchlistEntries.remove(at: idx)
+                self.user = profile
+                self.listsVersion &+= 1
+            } catch {
+                self.errorMessage = error.localizedDescription
             }
-            try? await Task.sleep(nanoseconds: 150_000_000)
-            self.user = try await service.fetchProfile(uid: uid)
-            self.listsVersion &+= 1
-        } catch {
-            self.errorMessage = error.localizedDescription
-            debugPrint("[ToggleWatchlistTyped] error:", error.localizedDescription)
+        } else {
+            do {
+                try await repo.addToWatchlist(uid: uid, entry: entry)
+                profile.watchlistEntries.append(entry)
+                self.user = profile
+                self.listsVersion &+= 1
+            } catch {
+                self.errorMessage = error.localizedDescription
+            }
         }
     }
-
-    // MARK: - Watched (typed)
 
     func toggleWatched(movieID: Int, type: String) async {
-        guard let uid = service.currentUID else { self.errorMessage = "No active session."; return }
-        let normalizedType = type.lowercased()
-        debugPrint("[ToggleWatchedTyped] start id=\(movieID) type=\(normalizedType)")
-        do {
-            let repo = UserProfileRepository()
-            let current = try await service.fetchProfile(uid: uid)
-
-            let entry = WatchedEntry(id: movieID, type: normalizedType)
-            let hasEntry = current.watchedEntries.contains { $0.id == entry.id && $0.type.lowercased() == entry.type }
-
-            if hasEntry {
-                try await repo.removeFromWatched(uid: uid, entry: entry)
-                debugPrint("[ToggleWatchedTyped] removed entry=\(entry)")
-            } else {
-                try await repo.addToWatched(uid: uid, entry: entry)
-                debugPrint("[ToggleWatchedTyped] added entry=\(entry)")
-            }
-
-            try? await Task.sleep(nanoseconds: 200_000_000)
-            self.user = try await service.fetchProfile(uid: uid)
-            self.listsVersion &+= 1
-            debugPrint("[ToggleWatchedTyped] done. watchedEntries=\(self.user?.watchedEntries.count ?? 0) listsVersion=\(self.listsVersion)")
-        } catch {
-            self.errorMessage = error.localizedDescription
-            debugPrint("[ToggleWatchedTyped] error:", error.localizedDescription)
+        guard let uid = service.currentUID, var profile = self.user else {
+            self.errorMessage = "No active session."
+            return
         }
-    }
+        let normType = type.lowercased()
+        let entry = WatchedEntry(id: movieID, type: normType)
+        let repo = UserProfileRepository()
 
-    func toggleWatched(movieID: Int) async {
-        await toggleWatched(movieID: movieID, type: "movie")
+        if let idx = profile.watchedEntries.firstIndex(where: { $0.id == movieID && $0.type.lowercased() == normType }) {
+            do {
+                try await repo.removeFromWatched(uid: uid, entry: entry)
+                profile.watchedEntries.remove(at: idx)
+                self.user = profile
+                self.listsVersion &+= 1
+            } catch {
+                self.errorMessage = error.localizedDescription
+            }
+        } else {
+            do {
+                try await repo.addToWatched(uid: uid, entry: entry)
+                profile.watchedEntries.append(entry)
+                self.user = profile
+                self.listsVersion &+= 1
+            } catch {
+                self.errorMessage = error.localizedDescription
+            }
+        }
     }
 }
 
-// MARK: - Error Mapping (unchanged)
+// MARK: - Error Mapping
 private extension AuthViewModel {
     struct MappedError { let userMessage: String; let debugDescription: String }
     static func mapAuthError(_ error: Error) -> MappedError {
