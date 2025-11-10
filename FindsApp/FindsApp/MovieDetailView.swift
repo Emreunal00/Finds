@@ -101,7 +101,7 @@ struct MovieDetailView: View {
                 let type = movie.mediaType ?? "movie"
                 Task { await authVM.toggleFavorite(movieID: movie.id, mediaType: type) }
             } label: {
-                Label(isFavorite ? "Favorited" : "Favorite",
+                Label(isFavorite ? "Favorite" : "Favorite",
                       systemImage: isFavorite ? "heart.fill" : "heart")
                     .labelStyle(.titleAndIcon)
             }

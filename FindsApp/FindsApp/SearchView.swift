@@ -34,10 +34,11 @@ struct SearchView: View {
 
     // MARK: - Search controls
     private var searchControlsTop: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             // Arama alanı (yanında ekstra arama butonu yok) + overlay ile "çarpı" butonu
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 TextField("Search for a movie or TV show…", text: $vm.keyword)
+                    .font(.system(size: 17)) // Yazı tipini büyüt
                     .textInputAutocapitalization(.never)
                     .submitLabel(.search)
                     .focused($searchFocused)
@@ -58,18 +59,18 @@ struct SearchView: View {
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundStyle(.secondary)
-                                    .imageScale(.medium)
-                                    .padding(.trailing, 2)
+                                    .imageScale(.large) // ikon biraz büyüsün
+                                    .padding(.trailing, 4)
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Clear search and filters")
                         }
                     }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 16) // yatay padding artırıldı
+            .padding(.vertical, 14)   // dikey padding artırıldı (yüksekliği büyütür)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous) // köşe yarıçapı artırıldı
                     .fill(Color(.secondarySystemBackground))
             )
 
@@ -88,9 +89,9 @@ struct SearchView: View {
                     } label: {
                         Image(systemName: "calendar")
                             .imageScale(.large)
-                            .font(.system(size: 20, weight: .regular))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 6)
+                            .font(.system(size: 22, weight: .regular)) // ikon biraz büyüsün
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 8)
                             .background(
                                 Circle().fill(Color(.secondarySystemBackground))
                             )
