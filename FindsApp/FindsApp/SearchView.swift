@@ -26,10 +26,8 @@ struct SearchView: View {
                 }
             }
             .onChange(of: resetToken) { _ in
-                // Tab yeniden seçildiğinde Search başlangıç haline dön
-                vm.reset()
-                hasSearched = false
-                searchFocused = false
+                // Aynı tab tekrar seçildiğinde Search başlangıç haline dönsün
+                performFullReset()
             }
         }
     }
@@ -37,7 +35,7 @@ struct SearchView: View {
     // MARK: - Search controls
     private var searchControlsTop: some View {
         HStack(spacing: 8) {
-            // Arama alanı + ARAMA butonu (buton sadece arama yapar; reset yapmaz)
+            // Arama alanı (yanında ekstra arama butonu yok) + overlay ile "çarpı" butonu
             HStack(spacing: 10) {
                 TextField("Search for a movie or TV show…", text: $vm.keyword)
                     .textInputAutocapitalization(.never)
@@ -53,18 +51,20 @@ struct SearchView: View {
                         hasSearched = true
                         Task { await vm.search() }
                     }
-
-                Button {
-                    hasSearched = true
-                    Task { await vm.search() }
-                } label: {
-                    Image(systemName: "magnifyingglass.circle.fill")
-                        .imageScale(.large)
-                        .font(.system(size: 22, weight: .semibold))
-                        .symbolRenderingMode(.hierarchical)
-                        .accessibilityLabel("Search")
-                }
-                .buttonStyle(.plain)
+                    .overlay(alignment: .trailing) {
+                        if showClearButton {
+                            Button {
+                                performFullReset()
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                                    .imageScale(.medium)
+                                    .padding(.trailing, 2)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Clear search and filters")
+                        }
+                    }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -75,48 +75,51 @@ struct SearchView: View {
 
             Spacer(minLength: 8)
 
-            // Sağdaki filtre ikonları (janra/yıl)
-            HStack(spacing: 10) {
-                Menu {
-                    Picker("Genre", selection: $vm.selectedGenreID) {
-                        Text("All").tag(Int?.none)
-                        ForEach(vm.genres) { g in
-                            Text(g.name).tag(Int?.some(g.id))
+            // Sağdaki filtre ikonları (YIL butonu sadece aramadan sonra görünür)
+            if showYearFilterWhenSearched {
+                HStack(spacing: 10) {
+                    Menu {
+                        Picker("Year", selection: $vm.selectedYear) {
+                            Text("All").tag(Int?.none)
+                            ForEach((1899...Calendar.current.component(.year, from: Date())).reversed(), id: \.self) { y in
+                                Text(verbatim: String(y)).tag(Int?.some(y))
+                            }
                         }
+                    } label: {
+                        Image(systemName: "calendar")
+                            .imageScale(.large)
+                            .font(.system(size: 20, weight: .regular))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 6)
+                            .background(
+                                Circle().fill(Color(.secondarySystemBackground))
+                            )
+                            .accessibilityLabel("Year")
                     }
-                } label: {
-                    Image(systemName: "line.3.horizontal.decrease.circle")
-                        .imageScale(.large)
-                        .font(.system(size: 20, weight: .regular))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 6)
-                        .background(
-                            Circle().fill(Color(.secondarySystemBackground))
-                        )
-                        .accessibilityLabel("Genre")
-                }
-
-                Menu {
-                    Picker("Year", selection: $vm.selectedYear) {
-                        Text("All").tag(Int?.none)
-                        ForEach((1899...Calendar.current.component(.year, from: Date())).reversed(), id: \.self) { y in
-                            Text(verbatim: String(y)).tag(Int?.some(y))
-                        }
-                    }
-                } label: {
-                    Image(systemName: "calendar")
-                        .imageScale(.large)
-                        .font(.system(size: 20, weight: .regular))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 6)
-                        .background(
-                            Circle().fill(Color(.secondarySystemBackground))
-                        )
-                        .accessibilityLabel("Year")
                 }
             }
         }
         .font(.footnote)
+    }
+
+    // Yıl filtresi ne zaman görünsün?
+    private var showYearFilterWhenSearched: Bool {
+        // Arama tetiklendiyse, ya da sonuç/hata oluştuysa veya bir genre seçildiyse göster
+        hasSearched || !vm.results.isEmpty || vm.error != nil || vm.selectedGenreID != nil
+    }
+
+    // Clear butonunun görünmesi için koşul
+    private var showClearButton: Bool {
+        let hasKeyword = !vm.keyword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return hasKeyword || vm.selectedGenreID != nil || vm.selectedYear != nil || hasSearched || !vm.results.isEmpty || vm.error != nil
+    }
+
+    private func performFullReset() {
+        vm.reset()
+        vm.selectedGenreID = nil
+        vm.selectedYear = nil
+        hasSearched = false
+        searchFocused = false
     }
 
     // MARK: - Content

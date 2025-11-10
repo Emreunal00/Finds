@@ -54,22 +54,42 @@ struct ContentView: View {
                             } else {
                                 VStack(alignment: .leading, spacing: 24) {
                                     if !homeVM.trending.isEmpty {
-                                        SectionHeader(title: "Trending movies")
+                                        NavigationLink {
+                                            MoreListView(kind: .trendingMovies)
+                                        } label: {
+                                            SectionHeader(title: "Trending movies", showsChevron: true)
+                                        }
+                                        .buttonStyle(.plain)
                                         PosterHScroll(movies: homeVM.trending)
                                     }
 
                                     if !homeVM.suggestions.isEmpty {
-                                        SectionHeader(title: "Top picks for you")
+                                        NavigationLink {
+                                            MoreListView(kind: .suggestedMovies)
+                                        } label: {
+                                            SectionHeader(title: "Top picks for you", showsChevron: true)
+                                        }
+                                        .buttonStyle(.plain)
                                         PosterHScroll(movies: homeVM.suggestions)
                                     }
 
                                     if !homeVM.trendingShows.isEmpty {
-                                        SectionHeader(title: "Trending shows")
+                                        NavigationLink {
+                                            MoreListView(kind: .trendingTV)
+                                        } label: {
+                                            SectionHeader(title: "Trending shows", showsChevron: true)
+                                        }
+                                        .buttonStyle(.plain)
                                         PosterHScroll(movies: homeVM.trendingShows)
                                     }
 
                                     if !homeVM.suggestedShows.isEmpty {
-                                        SectionHeader(title: "Suggested Shows")
+                                        NavigationLink {
+                                            MoreListView(kind: .suggestedTV)
+                                        } label: {
+                                            SectionHeader(title: "Suggested Shows", showsChevron: true)
+                                        }
+                                        .buttonStyle(.plain)
                                         PosterHScroll(movies: homeVM.suggestedShows)
                                     }
                                 }
@@ -103,12 +123,19 @@ struct ContentView: View {
 
 private struct SectionHeader: View {
     let title: String
+    var showsChevron: Bool = false
     var body: some View {
-        HStack {
+        HStack(spacing: 8) {
             Text(title)
                 .font(.title3).bold()
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .imageScale(.small)
+                    .foregroundStyle(.secondary)
+            }
             Spacer()
         }
+        .contentShape(Rectangle())
     }
 }
 
