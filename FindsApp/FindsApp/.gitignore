@@ -2,10 +2,12 @@
 .DS_Store
 **/.DS_Store
 
-# Xcode user/workspace state
+# Xcode user/workspace state (do not track user-specific metadata)
 *.xcuserstate
 *.xccheckout
 *.xcscmblueprint
 *.xcuserdatad/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
 project.xcworkspace/xcuserdata/
 xcuserdata/
