@@ -12,7 +12,7 @@ struct EditProfileView: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
 
-    private let availableAvatars: [String] = (1...11).map { "avatar\($0)" }
+    private let availableAvatars: [String] = (1...15).map { "avatar\($0)" }
 
     private var themePreference: ThemePreference {
         ThemePreference(rawValue: themePreferenceRaw) ?? .system
