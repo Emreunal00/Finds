@@ -18,7 +18,7 @@ struct SearchView: View {
                 content
             }
             .padding(.horizontal)
-            .navigationTitle("Search")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .task {
                 if vm.genres.isEmpty {

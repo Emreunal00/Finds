@@ -102,7 +102,7 @@ struct AuthView: View {
                 Spacer()
             }
             .background(LinearGradient(colors: [Color(.systemBackground), Color(.secondarySystemBackground)], startPoint: .top, endPoint: .bottom).ignoresSafeArea())
-            .navigationTitle("Account")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
         }
     }
