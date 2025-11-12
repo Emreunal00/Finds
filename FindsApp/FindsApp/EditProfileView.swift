@@ -1,5 +1,4 @@
 import SwiftUI
-import PhotosUI
 import FirebaseAuth
 
 struct EditProfileView: View {
@@ -9,10 +8,11 @@ struct EditProfileView: View {
     @AppStorage("themePreference") private var themePreferenceRaw: String = ThemePreference.system.rawValue
 
     @State private var displayName: String = ""
-    @State private var selectedItem: PhotosPickerItem?
-    @State private var selectedImageData: Data?
+    @State private var selectedAvatarID: String?
     @State private var isSaving = false
     @State private var errorMessage: String?
+
+    private let availableAvatars: [String] = (1...11).map { "avatar\($0)" }
 
     private var themePreference: ThemePreference {
         ThemePreference(rawValue: themePreferenceRaw) ?? .system
@@ -21,18 +21,34 @@ struct EditProfileView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("Profile Photo")) {
-                    HStack(spacing: 12) {
-                        avatar
-                        PhotosPicker(selection: $selectedItem, matching: .images, photoLibrary: .shared()) {
-                            Label("Choose Photo", systemImage: "photo")
+                Section(header: Text("Avatar")) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 12) {
+                            avatar
+                            Text("Current selection")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
                         }
-                        .onChange(of: selectedItem) { newItem in
-                            Task {
-                                if let data = try? await newItem?.loadTransferable(type: Data.self) {
-                                    selectedImageData = data
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            LazyHStack(spacing: 12) {
+                                ForEach(availableAvatars, id: \.self) { id in
+                                    Button {
+                                        selectedAvatarID = id
+                                    } label: {
+                                        Image(id)
+                                            .resizable()
+                                            .scaledToFill()
+                                            .frame(width: 56, height: 56)
+                                            .clipShape(Circle())
+                                            .overlay(
+                                                Circle().stroke(selectedAvatarID == id ? Color.accentColor : .clear, lineWidth: 3)
+                                            )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel(Text("Select avatar \(id)"))
                                 }
                             }
+                            .padding(.vertical, 4)
                         }
                     }
                 }
@@ -69,24 +85,31 @@ struct EditProfileView: View {
                     } label: {
                         if isSaving { ProgressView() } else { Text("Save").bold() }
                     }
-                    .disabled(isSaving || (displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedImageData == nil))
+                    .disabled(isSaving || (displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedAvatarID == nil))
                 }
             }
             .onAppear {
                 displayName = authVM.user?.displayName ?? (Auth.auth().currentUser?.displayName ?? "")
+                if let urlStr = authVM.user?.photoURL, urlStr.hasPrefix("avatar://") { selectedAvatarID = String(urlStr.dropFirst("avatar://".count)) }
             }
         }
     }
 
     @ViewBuilder
     private var avatar: some View {
-        Group {
-            if let data = selectedImageData, let ui = UIImage(data: data) {
-                Image(uiImage: ui)
+        if let id = selectedAvatarID {
+            Image(id)
+                .resizable().scaledToFill()
+                .frame(width: 64, height: 64)
+                .clipShape(Circle())
+        } else if let urlStr = authVM.user?.photoURL {
+            if urlStr.hasPrefix("avatar://") {
+                let id = String(urlStr.dropFirst("avatar://".count))
+                Image(id)
                     .resizable().scaledToFill()
                     .frame(width: 64, height: 64)
                     .clipShape(Circle())
-            } else if let urlStr = authVM.user?.photoURL, let url = URL(string: urlStr) {
+            } else if let url = URL(string: urlStr) {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .empty: Circle().fill(Color(.tertiarySystemFill)).frame(width: 64, height: 64).overlay { ProgressView() }
@@ -98,6 +121,8 @@ struct EditProfileView: View {
             } else {
                 placeholder
             }
+        } else {
+            placeholder
         }
     }
 
@@ -117,9 +142,9 @@ struct EditProfileView: View {
         defer { isSaving = false }
 
         do {
-            if let data = selectedImageData, let uid = Auth.auth().currentUser?.uid {
-                let url = try await StorageService().uploadProfileImage(data: data, for: uid)
-                await authVM.updatePhotoURL(url)
+            if let id = selectedAvatarID {
+                let urlStr = "avatar://" + id
+                await authVM.updatePhotoURL(urlStr)
             }
 
             let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)

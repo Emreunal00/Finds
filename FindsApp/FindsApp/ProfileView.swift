@@ -89,9 +89,7 @@ struct ProfileView: View {
         VStack(spacing: 12) {
             Group {
                 HStack(spacing: 12) {
-                    Image(systemName: "person.crop.circle.fill")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.secondary)
+                    profileAvatar
                     VStack(alignment: .leading, spacing: 4) {
                         Text(displayName).font(.headline)
                         Text(email).font(.subheadline).foregroundStyle(.secondary)
@@ -440,6 +438,52 @@ struct ProfileView: View {
 
     private var email: String {
         authVM.user?.email ?? "-"
+    }
+
+    @ViewBuilder
+    private var profileAvatar: some View {
+        if let urlStr = authVM.user?.photoURL {
+            if urlStr.hasPrefix("avatar://") {
+                let id = String(urlStr.dropFirst("avatar://".count))
+                Image(id)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 56, height: 56)
+                    .clipShape(Circle())
+            } else if let url = URL(string: urlStr) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        Circle().fill(Color(.tertiarySystemFill))
+                            .frame(width: 56, height: 56)
+                            .overlay { ProgressView() }
+                    case .success(let img):
+                        img.resizable()
+                            .scaledToFill()
+                            .frame(width: 56, height: 56)
+                            .clipShape(Circle())
+                    case .failure:
+                        profilePlaceholder
+                    @unknown default:
+                        profilePlaceholder
+                    }
+                }
+            } else {
+                profilePlaceholder
+            }
+        } else {
+            profilePlaceholder
+        }
+    }
+
+    private var profilePlaceholder: some View {
+        Circle()
+            .fill(Color(.tertiarySystemFill))
+            .frame(width: 56, height: 56)
+            .overlay {
+                Image(systemName: "person.fill")
+                    .foregroundStyle(.secondary)
+            }
     }
 }
 
