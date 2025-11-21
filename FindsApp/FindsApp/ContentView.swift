@@ -1,6 +1,45 @@
 import SwiftUI
 import Combine
 
+private final class PosterRatingsCache: ObservableObject {
+    static let shared = PosterRatingsCache()
+    @Published private(set) var averages: [String: Double] = [:] // key: "type:id"
+
+    private var ongoingTasks: Set<String> = []
+
+    func key(for movie: Movie) -> String { "\((movie.mediaType ?? "movie").lowercased()):\(movie.id)" }
+
+    func average(for movie: Movie) -> Double? { averages[key(for: movie)] }
+
+    func loadIfNeeded(for movie: Movie) {
+        let k = key(for: movie)
+        if averages[k] != nil || ongoingTasks.contains(k) { return }
+        ongoingTasks.insert(k)
+        Task { [weak self] in
+            let repo = RatingsRepository()
+            let type = (movie.mediaType ?? "movie").lowercased()
+            do {
+                if let agg = try await repo.fetchAggregate(movieID: movie.id, type: type) {
+                    await MainActor.run {
+                        self?.averages[k] = agg.average
+                        self?.ongoingTasks.remove(k)
+                    }
+                } else {
+                    await MainActor.run {
+                        self?.averages[k] = 0
+                        self?.ongoingTasks.remove(k)
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self?.averages[k] = 0
+                    self?.ongoingTasks.remove(k)
+                }
+            }
+        }
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject var authVM: AuthViewModel
     @StateObject private var homeVM = HomeViewModel()
@@ -142,6 +181,8 @@ private struct SectionHeader: View {
 private struct PosterHScroll: View {
     let movies: [Movie]
 
+    @StateObject private var ratingsCache = PosterRatingsCache.shared
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
@@ -166,10 +207,8 @@ private struct PosterHScroll: View {
                                 if movie.year > 0 {
                                     Text(String(movie.year))
                                 }
-                                if movie.rating > 0 {
-                                    let percent = Int(round(movie.rating * 20))
-                                    Text("\(percent)%")
-                                        .foregroundStyle(ScoreColor.color(for: percent))
+                                if let avg = ratingsCache.average(for: movie) {
+                                    Text(String(format: "%.1f / 5", avg))
                                 }
                             }
                             .font(.caption)
@@ -177,6 +216,7 @@ private struct PosterHScroll: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .onAppear { ratingsCache.loadIfNeeded(for: movie) }
                 }
             }
             .padding(.vertical, 4)

@@ -1,4 +1,34 @@
+import Combine
+import Observation
 import SwiftUI
+
+private final class FavoritesRatingsCache: ObservableObject {
+    static let shared = FavoritesRatingsCache()
+    @Published private(set) var averages: [String: Double] = [:] // key: "type:id"
+    private var ongoing: Set<String> = []
+
+    func key(for movie: Movie) -> String { "\((movie.mediaType ?? "movie").lowercased()):\(movie.id)" }
+    func average(for movie: Movie) -> Double? { averages[key(for: movie)] }
+
+    func loadIfNeeded(for movie: Movie) {
+        let k = key(for: movie)
+        if averages[k] != nil || ongoing.contains(k) { return }
+        ongoing.insert(k)
+        Task { [weak self] in
+            let repo = RatingsRepository()
+            let type = (movie.mediaType ?? "movie").lowercased()
+            do {
+                if let agg = try await repo.fetchAggregate(movieID: movie.id, type: type) {
+                    await MainActor.run { self?.averages[k] = agg.average; self?.ongoing.remove(k) }
+                } else {
+                    await MainActor.run { self?.averages[k] = 0; self?.ongoing.remove(k) }
+                }
+            } catch {
+                await MainActor.run { self?.averages[k] = 0; self?.ongoing.remove(k) }
+            }
+        }
+    }
+}
 
 struct FavoritesListView: View {
     enum SortOption: String, CaseIterable, Identifiable {
@@ -24,6 +54,8 @@ struct FavoritesListView: View {
     @State private var originalEntries: [WatchedEntry] = []
     // TMDb’de bulunmayanlar (404) için bilgi
     @State private var invalid: [WatchedEntry] = []
+    
+    @StateObject private var ratingsCache = FavoritesRatingsCache.shared
 
     private let service: MovieServicing = MovieService()
 
@@ -67,9 +99,8 @@ struct FavoritesListView: View {
                                 Text(movie.title).font(.headline)
                                 HStack(spacing: 8) {
                                     if movie.year > 0 { Text(String(movie.year)) }
-                                    if movie.rating > 0 {
-                                        let percent = Int(round(movie.rating * 20))
-                                        Text("\(percent)%").foregroundStyle(ScoreColor.color(for: percent))
+                                    if let avg = ratingsCache.average(for: movie) {
+                                        Text(String(format: "%.1f / 5", avg))
                                     }
                                 }
                                 .font(.caption).foregroundStyle(.secondary)
@@ -77,6 +108,7 @@ struct FavoritesListView: View {
                             Spacer()
                         }
                     }
+                    .onAppear { ratingsCache.loadIfNeeded(for: movie) }
                 }
             }
         }
@@ -178,9 +210,9 @@ struct FavoritesListView: View {
         case .yearOldestFirst:
             return movies.sorted { $0.year < $1.year }
         case .ratingHighFirst:
-            return movies.sorted { $0.rating > $1.rating }
+            return movies.sorted { (ratingsCache.average(for: $0) ?? 0) > (ratingsCache.average(for: $1) ?? 0) }
         case .ratingLowFirst:
-            return movies.sorted { $0.rating < $1.rating }
+            return movies.sorted { (ratingsCache.average(for: $0) ?? 0) < (ratingsCache.average(for: $1) ?? 0) }
         }
     }
 
