@@ -85,10 +85,6 @@ struct PickerView: View {
                 } else if let movie = movies[safe: currentIndex] {
                     // Movie poster with swipe gesture
                     ZStack {
-                        RoundedRectangle(cornerRadius: 30, style: .continuous)
-                            .fill(Color(.tertiarySystemFill))
-                            .frame(width: 300, height: 450)
-                            .shadow(radius: 14, y: 12)
                         AsyncImage(url: movie.posterURL) { phase in
                             switch phase {
                             case .empty: ProgressView()
@@ -102,8 +98,8 @@ struct PickerView: View {
                             @unknown default: EmptyView()
                             }
                         }
-                        .frame(width: 280, height: 420)
-                        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                        .frame(width: 320, height: 500)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                         // Glow overlay based on drag direction
                         // REMOVED as per instructions
@@ -112,7 +108,6 @@ struct PickerView: View {
                     .offset(x: dragOffset)
                     .rotationEffect(.degrees(Double(dragOffset) / 20))
                     .scaleEffect(1 - min(abs(dragOffset) / 1200, 0.08))
-                    .shadow(color: .black.opacity(Double(min(abs(dragOffset) / 300, 0.25))), radius: 12, y: 10)
                     .gesture(
                         DragGesture()
                             .onChanged { value in
@@ -144,13 +139,18 @@ struct PickerView: View {
                     )
                     .animation(.interactiveSpring(), value: dragOffset)
                     .transition(.asymmetric(insertion: .scale.combined(with: .opacity), removal: .opacity))
-                    // Movie title
-                    Text(movie.title)
-                        .font(.title2).bold()
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                        .padding(.top, 8)
-                        .padding(.horizontal, 16)
+                    // Movie title wrapped with NavigationLink
+                    NavigationLink {
+                        MovieDetailView(movie: movie)
+                    } label: {
+                        Text(movie.title)
+                            .font(.title2).bold()
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                            .padding(.top, 8)
+                            .padding(.horizontal, 16)
+                    }
+                    .buttonStyle(.plain)
                     // Action buttons
                     HStack(spacing: 14) {
                         Button {
