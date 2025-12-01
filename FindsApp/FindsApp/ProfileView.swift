@@ -1,6 +1,12 @@
 import Combine
 import Observation
 import SwiftUI
+import FirebaseFirestore
+
+struct ProfileCustomUserList: Identifiable, Equatable {
+    let id: String
+    let name: String
+}
 
 private final class ProfileRatingsCache: ObservableObject {
     static let shared = ProfileRatingsCache()
@@ -39,6 +45,8 @@ struct ProfileView: View {
     @StateObject private var ratingsCache = ProfileRatingsCache.shared
     @State private var navPath = NavigationPath()
     @State private var showingEditProfile = false
+    @State private var userCustomLists: [ProfileCustomUserList] = []
+    @State private var listsListener: ListenerRegistration? = nil
     private let service: MovieServicing = MovieService()
 
     enum ListTab: String, CaseIterable, Identifiable {
@@ -101,8 +109,12 @@ struct ProfileView: View {
                 EditProfileView()
                     .environmentObject(authVM)
             }
-            .onAppear { Task { await loadCurrentList(limitToFive: true) } }
+            .onAppear {
+                Task { await loadCurrentList(limitToFive: true) }
+                if let uid = authVM.user?.id { startCustomListsListener(uid: uid) }
+            }
             .onChange(of: authVM.listsVersion) { _ in Task { await loadCurrentList(limitToFive: true) } }
+            .onDisappear { stopCustomListsListener() }
             .navigationDestination(for: ListTab.self) { tab in
                 switch tab {
                 case .favorites:
@@ -169,6 +181,40 @@ struct ProfileView: View {
                             Label("Watched", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                             Spacer()
                             Text("\(u.watchedEntries.count)").foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding()
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .padding(.horizontal)
+
+                Group {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Custom Lists")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        if userCustomLists.isEmpty {
+                            Text("No custom lists yet.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(userCustomLists) { list in
+                                    NavigationLink {
+                                        CustomListDetailView(list: list)
+                                            .environmentObject(authVM)
+                                    } label: {
+                                        HStack {
+                                            Text(list.name)
+                                                .font(.body)
+                                            Spacer()
+                                            Image(systemName: "chevron.right")
+                                                .imageScale(.small)
+                                                .foregroundStyle(.tertiary)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                     .padding()
@@ -333,6 +379,33 @@ struct ProfileView: View {
 
     private var emptyTitle: String { emptyTitleText(for: selectedTab) }
     private var emptySubtitle: String { emptySubtitleText(for: selectedTab) }
+
+    // MARK: - Firestore Custom Lists
+
+    private func startCustomListsListener(uid: String) {
+        let ref = Firestore.firestore()
+            .collection("users")
+            .document(uid)
+            .collection("lists")
+            .order(by: "createdAt", descending: false)
+        listsListener = ref.addSnapshotListener { snapshot, error in
+            if let error = error {
+                print("[Profile Lists] listener error:", error.localizedDescription)
+                return
+            }
+            guard let docs = snapshot?.documents else { return }
+            let lists = docs.map { doc -> ProfileCustomUserList in
+                let name = doc.data()["name"] as? String ?? "Untitled"
+                return ProfileCustomUserList(id: doc.documentID, name: name)
+            }
+            self.userCustomLists = lists
+        }
+    }
+
+    private func stopCustomListsListener() {
+        listsListener?.remove()
+        listsListener = nil
+    }
 
     // MARK: - Data loading
 

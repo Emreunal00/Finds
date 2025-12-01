@@ -1,6 +1,11 @@
 import SwiftUI
 import FirebaseFirestore
 
+struct CustomUserList: Identifiable, Equatable {
+    let id: String
+    let name: String
+}
+
 struct StarRatingView: View {
     @Binding var rating: Double // 0.0–5.0 (yarım yıldız dahil)
     let starSize: CGFloat
@@ -67,6 +72,12 @@ struct MovieDetailView: View {
 
     @State private var isShowingRatingSheet: Bool = false
     @State private var tempRating: Double = 0.0
+
+    @State private var isShowingListsSheet: Bool = false
+    @State private var newListName: String = ""
+    @State private var userLists: [CustomUserList] = []
+    @State private var selectedLists: Set<String> = []
+    @State private var listsListener: ListenerRegistration? = nil
 
     var body: some View {
         ScrollView {
@@ -137,6 +148,73 @@ struct MovieDetailView: View {
             }
             .padding()
             .presentationDetents([.height(240), .medium])
+        }
+        .sheet(isPresented: $isShowingListsSheet) {
+            NavigationStack {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Add to Lists").font(.headline)
+                    // Existing lists
+                    if userLists.isEmpty {
+                        Text("No lists yet.").foregroundStyle(.secondary)
+                    } else {
+                        List(selection: $selectedLists) {
+                            ForEach(userLists) { list in
+                                HStack {
+                                    Text(list.name)
+                                    Spacer()
+                                    if selectedLists.contains(list.id) {
+                                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    if selectedLists.contains(list.id) { selectedLists.remove(list.id) } else { selectedLists.insert(list.id) }
+                                }
+                            }
+                        }
+                        .listStyle(.insetGrouped)
+                        .frame(maxHeight: 240)
+                    }
+
+                    // Create new list
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Create new list").font(.subheadline).foregroundStyle(.secondary)
+                        HStack {
+                            TextField("List name", text: $newListName)
+                                .textFieldStyle(.roundedBorder)
+                            Button("Add") {
+                                Task {
+                                    if let uid = authVM.user?.id { await addNewList(uid: uid, name: newListName) }
+                                    newListName = ""
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                    }
+
+                    HStack {
+                        Button("Cancel") { isShowingListsSheet = false }
+                        Spacer()
+                        Button("Save") {
+                            Task {
+                                if let uid = authVM.user?.id { await saveSelections(uid: uid) }
+                                isShowingListsSheet = false
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+                .padding()
+                .navigationTitle("Lists")
+                .navigationBarTitleDisplayMode(.inline)
+                .onAppear {
+                    if let uid = authVM.user?.id { startListsListener(uid: uid) }
+                }
+                .onDisappear {
+                    stopListsListener()
+                }
+            }
+            .presentationDetents([.medium, .large])
         }
         .task {
             let repo = RatingsRepository()
@@ -289,6 +367,17 @@ struct MovieDetailView: View {
             .disabled(authVM.user == nil)
 
             Button {
+                isShowingListsSheet = true
+            } label: {
+                Label("Add to List", systemImage: "text.badge.plus")
+                    .labelStyle(.titleAndIcon)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(.purple)
+            .disabled(authVM.user == nil)
+
+            Button {
                 tempRating = userPreviousRating ?? userRating
                 isShowingRatingSheet = true
             } label: {
@@ -335,6 +424,90 @@ struct MovieDetailView: View {
                 .frame(height: 240)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             Image(systemName: "film").font(.system(size: 40)).foregroundStyle(.secondary)
+        }
+    }
+
+    private func startListsListener(uid: String) {
+        let ref = Firestore.firestore()
+            .collection("users")
+            .document(uid)
+            .collection("lists")
+            .order(by: "createdAt", descending: false)
+        listsListener = ref.addSnapshotListener { snapshot, error in
+            if let error = error {
+                print("[Lists] listener error:", error.localizedDescription)
+                return
+            }
+            guard let docs = snapshot?.documents else { return }
+            let lists = docs.map { doc -> CustomUserList in
+                let name = doc.data()["name"] as? String ?? "Untitled"
+                return CustomUserList(id: doc.documentID, name: name)
+            }
+            self.userLists = lists
+            // Preload selections for this movie in user's lists
+            Task { await loadSelections(uid: uid) }
+        }
+    }
+
+    private func stopListsListener() {
+        listsListener?.remove()
+        listsListener = nil
+    }
+
+    private func loadSelections(uid: String) async {
+        let type = (movie.mediaType ?? "movie").lowercased()
+        let db = Firestore.firestore()
+        var newSelected: Set<String> = []
+        for list in userLists {
+            let itemRef = db.collection("users").document(uid)
+                .collection("lists").document(list.id)
+                .collection("items").document("\(type):\(movie.id)")
+            do {
+                let snap = try await itemRef.getDocument()
+                if snap.exists { newSelected.insert(list.id) }
+            } catch {
+                print("[Lists] load selection error for \(list.id):", error.localizedDescription)
+            }
+        }
+        await MainActor.run { self.selectedLists = newSelected }
+    }
+
+    private func addNewList(uid: String, name: String) async {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let db = Firestore.firestore()
+        do {
+            let ref = db.collection("users").document(uid).collection("lists").document()
+            try await ref.setData([
+                "name": trimmed,
+                "createdAt": FieldValue.serverTimestamp()
+            ])
+        } catch {
+            print("[Lists] add error:", error.localizedDescription)
+        }
+    }
+
+    private func saveSelections(uid: String) async {
+        let type = (movie.mediaType ?? "movie").lowercased()
+        let db = Firestore.firestore()
+        let key = "\(type):\(movie.id)"
+        for list in userLists {
+            let itemRef = db.collection("users").document(uid)
+                .collection("lists").document(list.id)
+                .collection("items").document(key)
+            do {
+                if selectedLists.contains(list.id) {
+                    try await itemRef.setData([
+                        "movieId": movie.id,
+                        "type": type,
+                        "addedAt": FieldValue.serverTimestamp()
+                    ])
+                } else {
+                    try await itemRef.delete()
+                }
+            } catch {
+                print("[Lists] save item error for \(list.id):", error.localizedDescription)
+            }
         }
     }
 
@@ -461,4 +634,3 @@ struct MovieDetailView: View {
             .environmentObject(AuthViewModel())
     }
 }
-
