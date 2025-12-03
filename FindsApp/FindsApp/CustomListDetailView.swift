@@ -1,5 +1,34 @@
 import SwiftUI
 import FirebaseFirestore
+import Combine
+
+private final class FavoritesRatingsCache: ObservableObject {
+    static let shared = FavoritesRatingsCache()
+    @Published private(set) var averages: [String: Double] = [:] // key: "type:id"
+    private var ongoing: Set<String> = []
+
+    func key(for movie: Movie) -> String { "\((movie.mediaType ?? "movie").lowercased()):\(movie.id)" }
+    func average(for movie: Movie) -> Double? { averages[key(for: movie)] }
+
+    func loadIfNeeded(for movie: Movie) {
+        let k = key(for: movie)
+        if averages[k] != nil || ongoing.contains(k) { return }
+        ongoing.insert(k)
+        Task { [weak self] in
+            let repo = RatingsRepository()
+            let type = (movie.mediaType ?? "movie").lowercased()
+            do {
+                if let agg = try await repo.fetchAggregate(movieID: movie.id, type: type) {
+                    await MainActor.run { self?.averages[k] = agg.average; self?.ongoing.remove(k) }
+                } else {
+                    await MainActor.run { self?.averages[k] = 0; self?.ongoing.remove(k) }
+                }
+            } catch {
+                await MainActor.run { self?.averages[k] = 0; self?.ongoing.remove(k) }
+            }
+        }
+    }
+}
 
 struct CustomListDetailView: View {
     let list: ProfileCustomUserList
@@ -8,6 +37,26 @@ struct CustomListDetailView: View {
     @State private var isLoading = false
     @State private var errorMessage: String? = nil
     @State private var movies: [Movie] = []
+    @StateObject private var ratingsCache = FavoritesRatingsCache.shared
+
+    enum SortOption: String, CaseIterable, Identifiable {
+        case addedNewestFirst = "Newest first"
+        case addedOldestFirst = "Oldest first"
+        case titleAZ = "Title A–Z"
+        case titleZA = "Title Z–A"
+        case yearNewestFirst = "Year ↓"
+        case yearOldestFirst = "Year ↑"
+        case ratingHighFirst = "Rating ↓"
+        case ratingLowFirst = "Rating ↑"
+
+        var id: String { rawValue }
+    }
+
+    @State private var sort: SortOption = .addedNewestFirst
+
+    // Eklenme sırası referansı
+    @State private var originalOrderIDs: [Int] = []
+
     private let service: MovieServicing = MovieService()
 
     var body: some View {
@@ -30,10 +79,11 @@ struct CustomListDetailView: View {
                 .frame(maxWidth: .infinity)
             } else {
                 List {
-                    ForEach(movies) { movie in
+                    ForEach(sortedMovies()) { movie in
                         NavigationLink { MovieDetailView(movie: movie) } label: {
                             row(for: movie)
                         }
+                        .onAppear { ratingsCache.loadIfNeeded(for: movie) }
                     }
                 }
                 .listStyle(.plain)
@@ -42,6 +92,19 @@ struct CustomListDetailView: View {
         }
         .navigationTitle(list.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Picker("Sort", selection: $sort) {
+                        ForEach(SortOption.allCases) { opt in
+                            Text(opt.rawValue).tag(opt)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down.circle")
+                }
+            }
+        }
         .task { await loadItems() }
     }
 
@@ -54,18 +117,40 @@ struct CustomListDetailView: View {
                 Text(movie.title).font(.headline)
                 HStack(spacing: 8) {
                     if movie.year > 0 { Text(String(movie.year)) }
-                    if let runtime = movie.durationMinutes {
-                        Label("\(runtime) min", systemImage: "clock").symbolRenderingMode(.hierarchical)
+                    if let avg = ratingsCache.average(for: movie) {
+                        Text(String(format: "%.1f / 5", avg))
                     }
                 }
                 .font(.caption).foregroundStyle(.secondary)
-                if !movie.summary.isEmpty {
-                    Text(movie.summary).font(.caption).lineLimit(2).foregroundStyle(.secondary)
-                }
             }
             Spacer()
         }
         .padding(.vertical, 6)
+    }
+
+    // MARK: - Sorting
+    private func sortedMovies() -> [Movie] {
+        switch sort {
+        case .addedNewestFirst:
+            let map = Dictionary(uniqueKeysWithValues: movies.map { ($0.id, $0) })
+            return originalOrderIDs.compactMap { map[$0] }
+        case .addedOldestFirst:
+            let reversed = Array(originalOrderIDs.reversed())
+            let map = Dictionary(uniqueKeysWithValues: movies.map { ($0.id, $0) })
+            return reversed.compactMap { map[$0] }
+        case .titleAZ:
+            return movies.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        case .titleZA:
+            return movies.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedDescending }
+        case .yearNewestFirst:
+            return movies.sorted { $0.year > $1.year }
+        case .yearOldestFirst:
+            return movies.sorted { $0.year < $1.year }
+        case .ratingHighFirst:
+            return movies.sorted { (ratingsCache.average(for: $0) ?? 0) > (ratingsCache.average(for: $1) ?? 0) }
+        case .ratingLowFirst:
+            return movies.sorted { (ratingsCache.average(for: $0) ?? 0) < (ratingsCache.average(for: $1) ?? 0) }
+        }
     }
 
     @ViewBuilder
@@ -121,6 +206,7 @@ struct CustomListDetailView: View {
                 guard let id = data["movieId"] as? Int, let type = data["type"] as? String else { return nil }
                 return (id, type)
             }
+            self.originalOrderIDs = items.map { $0.0 }
 
             let fetched: [Movie] = await withTaskGroup(of: (Int, Movie?).self) { group -> [Movie] in
                 for (id, type) in items {
@@ -145,6 +231,7 @@ struct CustomListDetailView: View {
                 return ordered.compactMap { $0 }
             }
             movies = fetched
+            for m in movies { ratingsCache.loadIfNeeded(for: m) }
         } catch {
             errorMessage = error.localizedDescription
             movies = []
@@ -158,3 +245,4 @@ struct CustomListDetailView: View {
             .environmentObject(AuthViewModel())
     }
 }
+

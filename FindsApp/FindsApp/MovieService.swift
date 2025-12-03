@@ -18,6 +18,13 @@ protocol MovieServicing {
 
     // NEW: Mixed discover by genre (movie + tv)
     func discoverMixed(genreID: Int, page: Int) async throws -> [Movie]
+
+    // NEW: Credits (cast & crew)
+    func fetchMovieCredits(id: Int) async throws -> Credits
+    func fetchTVCredits(id: Int) async throws -> Credits
+
+    // NEW: TV detail (to read created_by)
+    func fetchTVDetail(id: Int) async throws -> TMDBTVDetailDTO
 }
 
 final class MovieService: MovieServicing {
@@ -228,7 +235,7 @@ final class MovieService: MovieServicing {
         ]
         let url = try comps.asURL()
         let data = try await requestData(url: url, context: "tv/\(id)", maxRetries: 3, initialDelay: 0.8)
-        let detail = try decode(TMDBTVDetail.self, from: data, endpoint: "tv/\(id)")
+        let detail = try decode(TMDBTVDetailDTO.self, from: data, endpoint: "tv/\(id)")
         return detail.episodeRunTime?.first
     }
 
@@ -258,6 +265,43 @@ final class MovieService: MovieServicing {
         var m = detail.toMovie()
         m.mediaType = "tv"
         return m
+    }
+
+    // MARK: - Credits
+    func fetchMovieCredits(id: Int) async throws -> Credits {
+        var comps = URLComponents(url: TMDBAPI.baseURL.appendingPathComponent("movie/\(id)/credits"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            .init(name: "api_key", value: TMDBAPI.apiKey),
+            .init(name: "language", value: "en-US")
+        ]
+        let url = try comps.asURL()
+        let data = try await requestData(url: url, context: "movie/\(id)/credits", maxRetries: 3, initialDelay: 0.8)
+        let resp = try decode(TMDBCreditsResponse.self, from: data, endpoint: "movie/credits")
+        return Credits.fromTMDB(resp)
+    }
+
+    func fetchTVCredits(id: Int) async throws -> Credits {
+        var comps = URLComponents(url: TMDBAPI.baseURL.appendingPathComponent("tv/\(id)/credits"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            .init(name: "api_key", value: TMDBAPI.apiKey),
+            .init(name: "language", value: "en-US")
+        ]
+        let url = try comps.asURL()
+        let data = try await requestData(url: url, context: "tv/\(id)/credits", maxRetries: 3, initialDelay: 0.8)
+        let resp = try decode(TMDBCreditsResponse.self, from: data, endpoint: "tv/credits")
+        return Credits.fromTMDB(resp)
+    }
+
+    func fetchTVDetail(id: Int) async throws -> TMDBTVDetailDTO {
+        var comps = URLComponents(url: TMDBAPI.baseURL.appendingPathComponent("tv/\(id)"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            .init(name: "api_key", value: TMDBAPI.apiKey),
+            .init(name: "language", value: "en-US")
+        ]
+        let url = try comps.asURL()
+        let data = try await requestData(url: url, context: "tv/\(id)", maxRetries: 3, initialDelay: 0.8)
+        let detail = try decode(TMDBTVDetailDTO.self, from: data, endpoint: "tv/\(id)")
+        return detail
     }
 
     private func enrichMoviesWithRuntime(fromMovies tmdb: [TMDBMovie], baseMovies: [Movie]) async throws -> [Movie] {
@@ -532,5 +576,52 @@ struct TMDBTVSummary: Codable {
             durationMinutes: nil,
             mediaType: "tv"
         )
+    }
+}
+
+struct TMDBTVDetailDTO: Codable {
+    let id: Int
+    let name: String?
+    let firstAirDate: String?
+    let posterPath: String?
+    let voteAverage: Double?
+    let overview: String?
+    let episodeRunTime: [Int]?
+    let createdBy: [TMDBCreator]?
+}
+
+struct TMDBCreator: Codable {
+    let id: Int
+    let name: String
+}
+
+struct TMDBCreditsResponse: Codable {
+    let id: Int
+    let cast: [TMDBPerson]
+    let crew: [TMDBPerson]
+}
+
+struct TMDBPerson: Codable {
+    let id: Int
+    let name: String
+    let job: String?
+}
+
+struct Credits {
+    let cast: [Person]
+    let crew: [Person]
+}
+
+struct Person {
+    let id: Int
+    let name: String
+    let job: String?
+}
+
+private extension Credits {
+    static func fromTMDB(_ r: TMDBCreditsResponse) -> Credits {
+        let cast = r.cast.map { Person(id: $0.id, name: $0.name, job: $0.job) }
+        let crew = r.crew.map { Person(id: $0.id, name: $0.name, job: $0.job) }
+        return Credits(cast: cast, crew: crew)
     }
 }

@@ -79,6 +79,12 @@ struct MovieDetailView: View {
     @State private var selectedLists: Set<String> = []
     @State private var listsListener: ListenerRegistration? = nil
 
+    @State private var castNames: [String] = []
+    @State private var createdByNames: [String] = []
+    @State private var isCastExpanded: Bool = false
+
+    @State private var directorName: String? = nil
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -95,6 +101,46 @@ struct MovieDetailView: View {
                         .foregroundStyle(.primary)
                         .padding(.top, 4)
                 }
+
+                // Credits (Created by, Directors & Cast)
+                if !(createdByNames.isEmpty && directorName == nil && castNames.isEmpty) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        // Created by (TV only)
+                        if !createdByNames.isEmpty {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text("Created by:").font(.subheadline.weight(.semibold))
+                                Text(createdByNames.joined(separator: ", "))
+                                    .font(.subheadline)
+                            }
+                        }
+                        // Director(s)
+                        if let directorName {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text("Director:").font(.subheadline.weight(.semibold))
+                                Text(directorName).font(.subheadline)
+                            }
+                        }
+                        // Cast with expand/collapse
+                        if !castNames.isEmpty {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Cast:").font(.subheadline.weight(.semibold))
+                                let maxToShow = isCastExpanded ? castNames.count : min(10, castNames.count)
+                                Text(Array(castNames.prefix(maxToShow)).joined(separator: ", "))
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(isCastExpanded ? nil : 3)
+                                if castNames.count > 10 {
+                                    Button(isCastExpanded ? "Show less" : "Show more") {
+                                        withAnimation { isCastExpanded.toggle() }
+                                    }
+                                    .font(.footnote.weight(.semibold))
+                                }
+                            }
+                        }
+                    }
+                    .padding(.top, 6)
+                }
+
                 Spacer(minLength: 12)
             }
             .padding()
@@ -216,12 +262,20 @@ struct MovieDetailView: View {
             }
             .presentationDetents([.medium, .large])
         }
+        .onAppear {
+            if let uid = authVM.user?.id {
+                startListsListener(uid: uid)
+            }
+        }
+        .onDisappear {
+            stopListsListener()
+        }
         .task {
-            let repo = RatingsRepository()
+            let service: MovieServicing = MovieService()
             let type = (movie.mediaType ?? "movie").lowercased()
             print("[Ratings] .task load for key:", "\(type):\(movie.id)")
             do {
-                if let agg = try await repo.fetchAggregate(movieID: movie.id, type: type) {
+                if let agg = try await RatingsRepository().fetchAggregate(movieID: movie.id, type: type) {
                     print("[Ratings] fetched aggregate -> count=", agg.count, "avg=", agg.average)
                     await MainActor.run {
                         self.voteCount = agg.count
@@ -235,7 +289,7 @@ struct MovieDetailView: View {
                     }
                 }
                 if let uid = authVM.user?.id {
-                    if let ur = try await repo.fetchUserRating(uid: uid, movieID: movie.id, type: type) {
+                    if let ur = try await RatingsRepository().fetchUserRating(uid: uid, movieID: movie.id, type: type) {
                         print("[Ratings] fetched user rating for uid=", uid, "->", ur)
                         await MainActor.run {
                             self.userPreviousRating = ur
@@ -251,6 +305,8 @@ struct MovieDetailView: View {
             } catch {
                 print("[Ratings] load failed:", error.localizedDescription)
             }
+
+            await loadCredits()
         }
     }
 
@@ -274,6 +330,10 @@ struct MovieDetailView: View {
     
     private var isRated: Bool {
         return userPreviousRating != nil
+    }
+    
+    private var isInAnyCustomList: Bool {
+        !selectedLists.isEmpty
     }
 
     private var headerPoster: some View {
@@ -369,12 +429,13 @@ struct MovieDetailView: View {
             Button {
                 isShowingListsSheet = true
             } label: {
-                Label("Add to List", systemImage: "text.badge.plus")
+                Label(isInAnyCustomList ? "In Lists" : "Add to List",
+                      systemImage: isInAnyCustomList ? "text.badge.checkmark" : "text.badge.plus")
                     .labelStyle(.titleAndIcon)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .tint(.purple)
+            .tint(isInAnyCustomList ? .purple : .secondary)
             .disabled(authVM.user == nil)
 
             Button {
@@ -612,6 +673,45 @@ struct MovieDetailView: View {
 
             userPreviousRating = value
             userRating = value
+        }
+    }
+
+    private func loadCredits() async {
+        let service: MovieServicing = MovieService()
+        let type = (movie.mediaType ?? "movie").lowercased()
+        do {
+            if type == "movie" {
+                let credits = try await service.fetchMovieCredits(id: movie.id)
+                // Directors (there can be multiple)
+                let directors = credits.crew.filter { ($0.job ?? "").lowercased() == "director" }.map { $0.name }
+                let directorJoined = directors.joined(separator: ", ")
+                let topCast = credits.cast.map { $0.name }
+                await MainActor.run {
+                    self.directorName = directorJoined.isEmpty ? nil : directorJoined
+                    self.castNames = topCast
+                    self.createdByNames = []
+                }
+            } else {
+                async let creditsTask = service.fetchTVCredits(id: movie.id)
+                async let detailTask = service.fetchTVDetail(id: movie.id)
+                let (credits, detail) = try await (creditsTask, detailTask)
+                let directorLike = credits.crew.filter { ($0.job ?? "").lowercased().contains("director") }.map { $0.name }
+                let directorJoined = directorLike.joined(separator: ", ")
+                let topCast = credits.cast.map { $0.name }
+                let creators = (detail.createdBy ?? []).map { $0.name }
+                await MainActor.run {
+                    self.directorName = directorJoined.isEmpty ? nil : directorJoined
+                    self.castNames = topCast
+                    self.createdByNames = creators
+                }
+            }
+        } catch {
+            await MainActor.run {
+                // leave existing values or clear gracefully
+                if self.directorName == nil { self.directorName = nil }
+                if self.castNames.isEmpty { self.castNames = [] }
+                if self.createdByNames.isEmpty { self.createdByNames = [] }
+            }
         }
     }
 }

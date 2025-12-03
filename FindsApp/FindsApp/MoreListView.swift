@@ -102,7 +102,7 @@ struct MoreListView: View {
         do {
             var result: [Movie] = []
             var page = 1
-            while result.count < 100 && page <= 10 { // güvenli üst sınır
+            while result.count < 250 && page <= 20 { // güvenli üst sınır
                 let batch: [Movie]
                 switch kind {
                 case .trendingMovies:
@@ -118,7 +118,7 @@ struct MoreListView: View {
                 result.append(contentsOf: batch)
                 page += 1
             }
-            if result.count > 100 { result = Array(result.prefix(100)) }
+            if result.count > 250 { result = Array(result.prefix(250)) }
             movies = result
         } catch {
             errorMessage = error.localizedDescription
