@@ -78,6 +78,7 @@ struct MovieDetailView: View {
     @State private var userLists: [CustomUserList] = []
     @State private var selectedLists: Set<String> = []
     @State private var listsListener: ListenerRegistration? = nil
+    @State private var listPendingDeletion: CustomUserList? = nil
 
     @State private var castNames: [String] = []
     @State private var createdByNames: [String] = []
@@ -249,12 +250,12 @@ struct MovieDetailView: View {
                                             }
                                             Spacer()
                                             Button(role: .destructive) {
-                                                if let uid = authVM.user?.id {
-                                                    Task { await deleteList(uid: uid, listID: list.id) }
-                                                }
+                                                listPendingDeletion = list
                                             } label: {
-                                                Text("Delete")
+                                                Image(systemName: "trash")
+                                                    .imageScale(.medium)
                                             }
+                                            .accessibilityLabel("Delete list")
                                         }
                                         .contentShape(Rectangle())
                                         .padding(.horizontal)
@@ -318,6 +319,24 @@ struct MovieDetailView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .onAppear { if let uid = authVM.user?.id { startListsListener(uid: uid) } }
                 .onDisappear { stopListsListener() }
+                .alert("Delete list?", isPresented: Binding(
+                    get: { listPendingDeletion != nil },
+                    set: { if !$0 { listPendingDeletion = nil } }
+                )) {
+                    Button("Delete", role: .destructive) {
+                        if let uid = authVM.user?.id, let pending = listPendingDeletion {
+                            Task { await deleteList(uid: uid, listID: pending.id) }
+                        }
+                        listPendingDeletion = nil
+                    }
+                    Button("Cancel", role: .cancel) { listPendingDeletion = nil }
+                } message: {
+                    if let pending = listPendingDeletion {
+                        Text("Are you sure you want to delete \(pending.name)? This action cannot be undone.")
+                    } else {
+                        Text("Are you sure you want to delete this list? This action cannot be undone.")
+                    }
+                }
             }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
@@ -387,11 +406,11 @@ struct MovieDetailView: View {
         let type = (movie.mediaType ?? "movie").lowercased()
         return profile.watchedEntries.contains { $0.id == movie.id && $0.type.lowercased() == type }
     }
-    
+
     private var isRated: Bool {
         return userPreviousRating != nil
     }
-    
+
     private var isInAnyCustomList: Bool {
         !selectedLists.isEmpty
     }
@@ -804,3 +823,4 @@ struct MovieDetailView: View {
             .environmentObject(AuthViewModel())
     }
 }
+

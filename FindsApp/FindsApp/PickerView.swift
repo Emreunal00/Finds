@@ -41,6 +41,7 @@ struct PickerView: View {
     @State private var userLists: [CustomUserList] = []
     @State private var selectedLists: Set<String> = []
     @State private var listsListener: ListenerRegistration? = nil
+    @State private var listPendingDeletion: CustomUserList? = nil
 
     private var isInAnyCustomListForCurrent: Bool {
         !selectedLists.isEmpty
@@ -431,10 +432,12 @@ struct PickerView: View {
                                                 }
                                                 Spacer()
                                                 Button(role: .destructive) {
-                                                    if let uid = authVM.user?.id {
-                                                        Task { await deleteList(uid: uid, listID: list.id) }
-                                                    }
-                                                } label: { Text("Delete") }
+                                                    listPendingDeletion = list
+                                                } label: {
+                                                    Image(systemName: "trash")
+                                                        .imageScale(.medium)
+                                                }
+                                                .accessibilityLabel("Delete list")
                                             }
                                             .contentShape(Rectangle())
                                             .padding(.horizontal)
@@ -494,6 +497,24 @@ struct PickerView: View {
                     }
                     .navigationTitle("Lists")
                     .navigationBarTitleDisplayMode(.inline)
+                    .alert("Delete list?", isPresented: Binding(
+                        get: { listPendingDeletion != nil },
+                        set: { if !$0 { listPendingDeletion = nil } }
+                    )) {
+                        Button("Delete", role: .destructive) {
+                            if let uid = authVM.user?.id, let pending = listPendingDeletion {
+                                Task { await deleteList(uid: uid, listID: pending.id) }
+                            }
+                            listPendingDeletion = nil
+                        }
+                        Button("Cancel", role: .cancel) { listPendingDeletion = nil }
+                    } message: {
+                        if let pending = listPendingDeletion {
+                            Text("Are you sure you want to delete \(pending.name)? This action cannot be undone.")
+                        } else {
+                            Text("Are you sure you want to delete this list? This action cannot be undone.")
+                        }
+                    }
                 }
                 .onAppear {
                     if let uid = authVM.user?.id, let movie = movies[safe: currentIndex] {
