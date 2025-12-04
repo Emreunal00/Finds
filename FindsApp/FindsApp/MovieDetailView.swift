@@ -197,36 +197,93 @@ struct MovieDetailView: View {
         }
         .sheet(isPresented: $isShowingListsSheet) {
             NavigationStack {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Add to Lists").font(.headline)
-                    // Existing lists
-                    if userLists.isEmpty {
-                        Text("No lists yet.").foregroundStyle(.secondary)
-                    } else {
-                        List(selection: $selectedLists) {
-                            ForEach(userLists) { list in
-                                HStack {
-                                    Text(list.name)
-                                    Spacer()
-                                    if selectedLists.contains(list.id) {
-                                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                VStack(spacing: 0) {
+                    // Header
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Add to Lists").font(.title3.weight(.semibold))
+                        Text("Select the lists to include this title. You can also create a new list.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 16)
+
+                    // Search
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                        TextField("Search lists", text: Binding(
+                            get: { "" },
+                            set: { _ in }
+                        ))
+                        .textFieldStyle(.plain)
+                        .disabled(true)
+                    }
+                    .padding(10)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .padding(.horizontal)
+                    .padding(.top, 12)
+
+                    // Lists
+                    Group {
+                        if userLists.isEmpty {
+                            VStack(spacing: 8) {
+                                Image(systemName: "list.bullet.rectangle").font(.system(size: 28)).foregroundStyle(.secondary)
+                                Text("No lists yet").font(.headline)
+                                Text("Create your first list below.").font(.footnote).foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 24)
+                        } else {
+                            ScrollView {
+                                LazyVStack(spacing: 0) {
+                                    ForEach(userLists) { list in
+                                        let isSelected = selectedLists.contains(list.id)
+                                        HStack(spacing: 12) {
+                                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                                .foregroundStyle(isSelected ? Color.green : Color.secondary)
+                                                .imageScale(.large)
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(list.name).font(.body)
+                                                if isSelected { Text("Selected").font(.caption2).foregroundStyle(.secondary) }
+                                            }
+                                            Spacer()
+                                            Button(role: .destructive) {
+                                                if let uid = authVM.user?.id {
+                                                    Task { await deleteList(uid: uid, listID: list.id) }
+                                                }
+                                            } label: {
+                                                Text("Delete")
+                                            }
+                                        }
+                                        .contentShape(Rectangle())
+                                        .padding(.horizontal)
+                                        .padding(.vertical, 12)
+                                        .background(
+                                            Rectangle().fill(Color(.secondarySystemBackground)).opacity(0.001)
+                                        )
+                                        .onTapGesture {
+                                            if selectedLists.contains(list.id) {
+                                                selectedLists.remove(list.id)
+                                            } else {
+                                                selectedLists.insert(list.id)
+                                            }
+                                            if let uid = authVM.user?.id {
+                                                Task { await saveSelections(uid: uid) }
+                                            }
+                                        }
+                                        Divider().padding(.leading, 48)
                                     }
                                 }
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    if selectedLists.contains(list.id) { selectedLists.remove(list.id) } else { selectedLists.insert(list.id) }
-                                }
                             }
+                            .padding(.top, 8)
                         }
-                        .listStyle(.insetGrouped)
-                        .frame(maxHeight: 240)
                     }
 
                     // Create new list
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Create new list").font(.subheadline).foregroundStyle(.secondary)
-                        HStack {
-                            TextField("List name", text: $newListName)
+                        HStack(spacing: 8) {
+                            TextField("Create new list", text: $newListName)
                                 .textFieldStyle(.roundedBorder)
                             Button("Add") {
                                 Task {
@@ -237,9 +294,13 @@ struct MovieDetailView: View {
                             .buttonStyle(.borderedProminent)
                         }
                     }
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
 
-                    HStack {
+                    // Bottom bar
+                    HStack(spacing: 12) {
                         Button("Cancel") { isShowingListsSheet = false }
+                            .buttonStyle(.bordered)
                         Spacer()
                         Button("Save") {
                             Task {
@@ -249,18 +310,17 @@ struct MovieDetailView: View {
                         }
                         .buttonStyle(.borderedProminent)
                     }
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
+                    .background(.ultraThinMaterial)
                 }
-                .padding()
                 .navigationTitle("Lists")
                 .navigationBarTitleDisplayMode(.inline)
-                .onAppear {
-                    if let uid = authVM.user?.id { startListsListener(uid: uid) }
-                }
-                .onDisappear {
-                    stopListsListener()
-                }
+                .onAppear { if let uid = authVM.user?.id { startListsListener(uid: uid) } }
+                .onDisappear { stopListsListener() }
             }
-            .presentationDetents([.medium, .large])
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
         .onAppear {
             if let uid = authVM.user?.id {
@@ -569,6 +629,16 @@ struct MovieDetailView: View {
             } catch {
                 print("[Lists] save item error for \(list.id):", error.localizedDescription)
             }
+        }
+    }
+
+    private func deleteList(uid: String, listID: String) async {
+        let db = Firestore.firestore()
+        do {
+            try await db.collection("users").document(uid).collection("lists").document(listID).delete()
+            await MainActor.run { self.selectedLists.remove(listID) }
+        } catch {
+            print("[Lists] delete error for list=\(listID):", error.localizedDescription)
         }
     }
 

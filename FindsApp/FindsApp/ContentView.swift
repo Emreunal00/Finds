@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import FirebaseFirestore
 
 private final class PosterRatingsCache: ObservableObject {
     static let shared = PosterRatingsCache()
@@ -44,6 +45,9 @@ struct ContentView: View {
     @EnvironmentObject var authVM: AuthViewModel
     @StateObject private var homeVM = HomeViewModel()
     @State private var showProfile = false
+
+    @State private var showOnboarding = false
+    @State private var onboardingChecked = false
 
     private var welcomeTitle: String {
         let nickname: String = {
@@ -145,6 +149,21 @@ struct ContentView: View {
                 if homeVM.trending.isEmpty && homeVM.suggestions.isEmpty && homeVM.trendingShows.isEmpty && homeVM.suggestedShows.isEmpty {
                     await homeVM.load()
                 }
+                // Check onboarding status once per appearance
+                guard !onboardingChecked else { return }
+                onboardingChecked = true
+                if let uid = authVM.user?.id {
+                    do {
+                        let doc = try await Firestore.firestore().collection("users").document(uid).getDocument()
+                        let completed = (doc.data()?["onboardingCompleted"] as? Bool) ?? false
+                        if !completed {
+                            await MainActor.run { showOnboarding = true }
+                        }
+                    } catch {
+                        // If fetch fails, default to not showing onboarding to avoid blocking
+                        print("[Onboarding] status fetch failed:", error.localizedDescription)
+                    }
+                }
             }
             .refreshable {
                 await homeVM.load()
@@ -154,6 +173,14 @@ struct ContentView: View {
                                startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea()
             )
+            .fullScreenCover(isPresented: $showOnboarding) {
+                Hello()
+                    .environmentObject(authVM)
+                    .onDisappear {
+                        // When Hello completes, ensure we don't show it again in this session
+                        showOnboarding = false
+                    }
+            }
         }
     }
 }
