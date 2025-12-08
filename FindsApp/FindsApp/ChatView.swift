@@ -249,20 +249,28 @@ struct ChatView: View {
 
                 // Quick mood buttons
                 ScrollView(.horizontal, showsIndicators: false) {
+                    let moods: [(value: String, title: String, icon: String)] = [
+                        ("happy", "Happy", "face.smiling"),
+                        ("sad", "Sad", "face.dashed"),
+                        ("excited", "Excited", "sparkles"),
+                        ("chill", "Calm", "wind"),
+                        ("scared", "Scared", "exclamationmark.triangle"),
+                        ("tense", "Tense", "bolt"),
+                    ]
                     HStack(spacing: 8) {
-                        ForEach(["happy","sad","excited","chill","scared","tense"], id: \.self) { mood in
+                        ForEach(moods, id: \.value) { mood in
                             Button {
-                                selectedMood = mood
-                                Task { await sendMood(mood) }
+                                selectedMood = mood.value
+                                Task { await sendMood(mood.value) }
                             } label: {
                                 HStack(spacing: 6) {
-                                    Image(systemName: "face.smiling")
-                                    Text(mood.capitalized)
+                                    Image(systemName: mood.icon)
+                                    Text(mood.title)
                                 }
                                 .font(.footnote)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
-                                .background(selectedMood == mood ? Color.accentColor.opacity(0.15) : Color(.secondarySystemBackground))
+                                .background(selectedMood == mood.value ? Color.accentColor.opacity(0.15) : Color(.secondarySystemBackground))
                                 .clipShape(Capsule())
                             }
                             .buttonStyle(.plain)
