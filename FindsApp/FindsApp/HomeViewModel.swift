@@ -12,25 +12,35 @@ final class HomeViewModel: ObservableObject {
     @Published var error: String?
 
     private let service: MovieServicing
+    private let recommendations = RecommendationsService()
 
     init(service: MovieServicing = MovieService()) {
         self.service = service
     }
 
-    func load() async {
+    func load(userID: String?) async {
         guard !isLoading else { return }
         isLoading = true
         error = nil
         do {
             async let t = service.getTrending(page: 1)
-            async let s = service.getSuggestions(page: 1)
-            async let tvT = service.getTrendingTV(page: 1)       // NEW
-            async let tvS = service.getSuggestionsTV(page: 1)    // NEW
-            let (tr, sg, trTV, sgTV) = try await (t, s, tvT, tvS)
+            async let tvT = service.getTrendingTV(page: 1)
+
+            var recMoviesTask: Task<[Movie], Error>? = nil
+            var recShowsTask: Task<[Movie], Error>? = nil
+            if let uid = userID, !uid.isEmpty {
+                recMoviesTask = Task { try await recommendations.fetchRecommendedMovies(userID: uid) }
+                recShowsTask = Task { try await recommendations.fetchRecommendedShows(userID: uid) }
+            }
+
+            let (tr, trTV) = try await (t, tvT)
+            let recMovies = try await recMoviesTask?.value ?? []
+            let recShows = try await recShowsTask?.value ?? []
+
             trending = tr
-            suggestions = sg
             trendingShows = trTV
-            suggestedShows = sgTV
+            suggestions = recMovies
+            suggestedShows = recShows
         } catch {
             self.error = error.localizedDescription
         }

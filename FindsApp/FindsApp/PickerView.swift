@@ -568,18 +568,24 @@ struct PickerView: View {
         let type = (movie.mediaType ?? "movie").lowercased()
         let key = "\(type):\(movie.id)"
         let db = Firestore.firestore()
-        let collectionName = (decision == .recommend) ? "pickerDecisionsRecommended" : "pickerDecisionsNotRecommended"
-        let doc = db.collection("users").document(uid).collection(collectionName).document(key)
+
+        // Write ONLY to specific collections
+        let targetCollection = (decision == .recommend) ? "pickerDecisionsRecommended" : "pickerDecisionsNotRecommended"
+        let targetDoc = db.collection("users").document(uid).collection(targetCollection).document(key)
+
         do {
-            try await doc.setData([
+            try await targetDoc.setData([
                 "movieId": movie.id,
                 "type": type,
-                // Ensure server timestamp is always present for filtering by last 7 days
                 "decidedAt": FieldValue.serverTimestamp()
             ], merge: true)
         } catch {
             print("[Picker Swipe] save failed:", error.localizedDescription)
         }
+
+        // Clean up legacy common collection if present (no longer needed)
+        let legacyCommon = db.collection("users").document(uid).collection("pickerDecisions").document(key)
+        do { try await legacyCommon.delete() } catch { /* ignore if not exists */ }
     }
 
     // MARK: - Lists helpers

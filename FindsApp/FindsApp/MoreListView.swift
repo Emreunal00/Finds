@@ -66,6 +66,9 @@ struct MoreListView: View {
     @State private var sort: SortOption = .popularityDesc
 
     private let service: MovieServicing = MovieService()
+    
+    @EnvironmentObject private var authVM: AuthViewModel
+    private let recommendations = RecommendationsService()
 
     var body: some View {
         List {
@@ -138,11 +141,19 @@ struct MoreListView: View {
                 case .trendingMovies:
                     batch = try await service.getTrending(page: page)
                 case .suggestedMovies:
-                    batch = try await service.getSuggestions(page: page)
+                    if page == 1, let uid = authVM.user?.id, !uid.isEmpty {
+                        batch = try await recommendations.fetchRecommendedMovies(userID: uid)
+                    } else {
+                        batch = [] // no fallback, keep only personalized first page
+                    }
                 case .trendingTV:
                     batch = try await service.getTrendingTV(page: page)
                 case .suggestedTV:
-                    batch = try await service.getSuggestionsTV(page: page)
+                    if page == 1, let uid = authVM.user?.id, !uid.isEmpty {
+                        batch = try await recommendations.fetchRecommendedShows(userID: uid)
+                    } else {
+                        batch = [] // no fallback, keep only personalized first page
+                    }
                 }
                 if batch.isEmpty { break }
                 result.append(contentsOf: batch)

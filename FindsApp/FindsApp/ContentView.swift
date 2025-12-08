@@ -88,7 +88,7 @@ struct ContentView: View {
                                         .font(.footnote)
                                         .foregroundStyle(.secondary)
                                     Button("Retry") {
-                                        Task { await homeVM.load() }
+                                        Task { await homeVM.load(userID: authVM.user?.id) }
                                     }
                                     .buttonStyle(.borderedProminent)
                                 }
@@ -147,7 +147,7 @@ struct ContentView: View {
             .navigationBarHidden(true)
             .task {
                 if homeVM.trending.isEmpty && homeVM.suggestions.isEmpty && homeVM.trendingShows.isEmpty && homeVM.suggestedShows.isEmpty {
-                    await homeVM.load()
+                    await homeVM.load(userID: authVM.user?.id)
                 }
                 // Check onboarding status once per appearance
                 guard !onboardingChecked else { return }
@@ -166,7 +166,7 @@ struct ContentView: View {
                 }
             }
             .refreshable {
-                await homeVM.load()
+                await homeVM.load(userID: authVM.user?.id)
             }
             .background(
                 LinearGradient(colors: [Color(.systemBackground), Color(.secondarySystemBackground)],
