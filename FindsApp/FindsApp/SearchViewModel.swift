@@ -14,9 +14,29 @@ final class SearchViewModel: ObservableObject {
     @Published var genres: [TMDBGenre] = []
 
     private let service: MovieServicing
+    private var cancellables = Set<AnyCancellable>()
 
     init(service: MovieServicing = MovieService()) {
         self.service = service
+
+        // When keyword becomes empty, return to default search state automatically
+        $keyword
+            .removeDuplicates()
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .sink { [weak self] text in
+                guard let self = self else { return }
+                if text.isEmpty {
+                    // Do not clear genres; only reset result-related state
+                    self.results = []
+                    self.error = nil
+                    self.isLoading = false
+                    // Keep selected filters? Usually default page has no filters.
+                    self.selectedGenreID = nil
+                    self.selectedYear = nil
+                    print("[SearchVM] keyword cleared -> reset to default page")
+                }
+            }
+            .store(in: &cancellables)
     }
 
     func reset() {

@@ -94,8 +94,7 @@ struct ChatView: View {
     @State private var isSending: Bool = false
     @State private var selectedMood: String? = nil // optional mood quick filter
     @State private var liveRecs: [BotRecommendation] = []
-    @SceneStorage("chat.messages") private var storedMessagesData: Data?
-    @SceneStorage("chat.liveRecs") private var storedLiveRecsData: Data?
+    // Removed @SceneStorage properties as per instructions
 
     private let baseURL = URL(string: "https://finds-api-91195881425.europe-west3.run.app")!
 
@@ -286,33 +285,17 @@ struct ChatView: View {
                     .padding(.bottom, 6)
             }
             .task {
-                // Load messages from SceneStorage to persist during app session
-                if let data = storedMessagesData {
-                    if let loaded = try? JSONDecoder().decode([ChatMessage].self, from: data) {
-                        self.messages = loaded
-                    } else {
-                        self.messages = []
-                    }
-                } else {
-                    self.messages = []
-                }
-                if let recsData = storedLiveRecsData, let loadedRecs = try? JSONDecoder().decode([BotRecommendation].self, from: recsData) {
-                    self.liveRecs = loadedRecs
-                } else {
-                    self.liveRecs = []
-                }
+                // Clear messages and liveRecs on first appear
+                self.messages = []
+                self.liveRecs = []
             }
             .navigationTitle("Chat")
             .navigationBarTitleDisplayMode(.inline)
-            .onChange(of: messages) { _, newValue in
-                if let data = try? JSONEncoder().encode(newValue) {
-                    self.storedMessagesData = data
-                }
-            }
-            .onChange(of: liveRecs) { _, newValue in
-                if let data = try? JSONEncoder().encode(newValue) {
-                    self.storedLiveRecsData = data
-                }
+            .onChange(of: authVM.user?.id) { _, _ in
+                // Clear chat when user changes to keep chats per-user and fresh
+                self.messages = []
+                self.liveRecs = []
+                self.selectedMood = nil
             }
         }
     }
