@@ -1,0 +1,52 @@
+{
+  "configurations" : [
+    {
+      "id" : "A0AF5A0B-04EA-4030-AB40-DA8810C5F34A",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "commandLineArgumentEntries" : [
+      {
+        "argument" : "-FIRDebugEnabled"
+      }
+    ],
+    "performanceAntipatternCheckerEnabled" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:FindsApp.xcodeproj",
+      "identifier" : "1B2142A02E9D8F820062C090",
+      "name" : "FindsApp"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:FindsApp.xcodeproj",
+        "identifier" : "1BED17C32EEAD0EE00AB6DAB",
+        "name" : "FindsAppTests"
+      }
+    },
+    {
+      "enabled" : false,
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:FindsApp.xcodeproj",
+        "identifier" : "1BED17D02EEAD10600AB6DAB",
+        "name" : "FindsAppTests2"
+      }
+    },
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:FindsApp.xcodeproj",
+        "identifier" : "1BED17DF2EEAD17400AB6DAB",
+        "name" : "FindsAppUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

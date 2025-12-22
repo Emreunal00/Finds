@@ -32,14 +32,44 @@
 		1BED96672EA17E440056CFE3 /* FirebaseStorageCombine-Community in Frameworks */ = {isa = PBXBuildFile; productRef = 1BED96662EA17E440056CFE3 /* FirebaseStorageCombine-Community */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		1BED17C82EEAD0EE00AB6DAB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1B2142992E9D8F820062C090 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1B2142A02E9D8F820062C090;
+			remoteInfo = FindsApp;
+		};
+		1BED17E62EEAD17400AB6DAB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1B2142992E9D8F820062C090 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1B2142A02E9D8F820062C090;
+			remoteInfo = FindsApp;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		1B2142A12E9D8F820062C090 /* FindsApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FindsApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1BED17C42EEAD0EE00AB6DAB /* FindsAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FindsAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1BED17E02EEAD17400AB6DAB /* FindsAppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FindsAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1BF6E6FB2EF99B1B007D86D6 /* FindsApp.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = file; path = FindsApp.xctestplan; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		1B2142A32E9D8F820062C090 /* FindsApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = FindsApp;
+			sourceTree = "<group>";
+		};
+		1BED17C52EEAD0EE00AB6DAB /* FindsAppTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FindsAppTests;
+			sourceTree = "<group>";
+		};
+		1BED17E12EEAD17400AB6DAB /* FindsAppUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FindsAppUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -75,13 +105,30 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		1BED17C12EEAD0EE00AB6DAB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1BED17DD2EEAD17400AB6DAB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		1B2142982E9D8F820062C090 = {
 			isa = PBXGroup;
 			children = (
+				1BF6E6FB2EF99B1B007D86D6 /* FindsApp.xctestplan */,
 				1B2142A32E9D8F820062C090 /* FindsApp */,
+				1BED17C52EEAD0EE00AB6DAB /* FindsAppTests */,
+				1BED17E12EEAD17400AB6DAB /* FindsAppUITests */,
 				1B2142A22E9D8F820062C090 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -90,6 +137,8 @@
 			isa = PBXGroup;
 			children = (
 				1B2142A12E9D8F820062C090 /* FindsApp.app */,
+				1BED17C42EEAD0EE00AB6DAB /* FindsAppTests.xctest */,
+				1BED17E02EEAD17400AB6DAB /* FindsAppUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -142,6 +191,52 @@
 			productReference = 1B2142A12E9D8F820062C090 /* FindsApp.app */;
 			productType = "com.apple.product-type.application";
 		};
+		1BED17C32EEAD0EE00AB6DAB /* FindsAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1BED17CC2EEAD0EE00AB6DAB /* Build configuration list for PBXNativeTarget "FindsAppTests" */;
+			buildPhases = (
+				1BED17C02EEAD0EE00AB6DAB /* Sources */,
+				1BED17C12EEAD0EE00AB6DAB /* Frameworks */,
+				1BED17C22EEAD0EE00AB6DAB /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				1BED17C92EEAD0EE00AB6DAB /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				1BED17C52EEAD0EE00AB6DAB /* FindsAppTests */,
+			);
+			name = FindsAppTests;
+			packageProductDependencies = (
+			);
+			productName = FindsAppTests;
+			productReference = 1BED17C42EEAD0EE00AB6DAB /* FindsAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		1BED17DF2EEAD17400AB6DAB /* FindsAppUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1BED17E82EEAD17400AB6DAB /* Build configuration list for PBXNativeTarget "FindsAppUITests" */;
+			buildPhases = (
+				1BED17DC2EEAD17400AB6DAB /* Sources */,
+				1BED17DD2EEAD17400AB6DAB /* Frameworks */,
+				1BED17DE2EEAD17400AB6DAB /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				1BED17E72EEAD17400AB6DAB /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				1BED17E12EEAD17400AB6DAB /* FindsAppUITests */,
+			);
+			name = FindsAppUITests;
+			packageProductDependencies = (
+			);
+			productName = FindsAppUITests;
+			productReference = 1BED17E02EEAD17400AB6DAB /* FindsAppUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -149,11 +244,19 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2600;
+				LastSwiftUpdateCheck = 2610;
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
 					1B2142A02E9D8F820062C090 = {
 						CreatedOnToolsVersion = 26.0.1;
+					};
+					1BED17C32EEAD0EE00AB6DAB = {
+						CreatedOnToolsVersion = 26.1.1;
+						TestTargetID = 1B2142A02E9D8F820062C090;
+					};
+					1BED17DF2EEAD17400AB6DAB = {
+						CreatedOnToolsVersion = 26.1.1;
+						TestTargetID = 1B2142A02E9D8F820062C090;
 					};
 				};
 			};
@@ -175,12 +278,28 @@
 			projectRoot = "";
 			targets = (
 				1B2142A02E9D8F820062C090 /* FindsApp */,
+				1BED17C32EEAD0EE00AB6DAB /* FindsAppTests */,
+				1BED17DF2EEAD17400AB6DAB /* FindsAppUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		1B21429F2E9D8F820062C090 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1BED17C22EEAD0EE00AB6DAB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1BED17DE2EEAD17400AB6DAB /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -197,7 +316,34 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		1BED17C02EEAD0EE00AB6DAB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1BED17DC2EEAD17400AB6DAB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		1BED17C92EEAD0EE00AB6DAB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1B2142A02E9D8F820062C090 /* FindsApp */;
+			targetProxy = 1BED17C82EEAD0EE00AB6DAB /* PBXContainerItemProxy */;
+		};
+		1BED17E72EEAD17400AB6DAB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1B2142A02E9D8F820062C090 /* FindsApp */;
+			targetProxy = 1BED17E62EEAD17400AB6DAB /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		1B2142AA2E9D8F840062C090 /* Debug */ = {
@@ -387,6 +533,92 @@
 			};
 			name = Release;
 		};
+		1BED17CA2EEAD0EE00AB6DAB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8QA85V7LXK;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = emreeren.FindsAppTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FindsApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FindsApp";
+			};
+			name = Debug;
+		};
+		1BED17CB2EEAD0EE00AB6DAB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8QA85V7LXK;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = emreeren.FindsAppTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FindsApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FindsApp";
+			};
+			name = Release;
+		};
+		1BED17E92EEAD17400AB6DAB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8QA85V7LXK;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = emreeren.FindsAppUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = FindsApp;
+			};
+			name = Debug;
+		};
+		1BED17EA2EEAD17400AB6DAB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8QA85V7LXK;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = emreeren.FindsAppUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = FindsApp;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -404,6 +636,24 @@
 			buildConfigurations = (
 				1B2142AD2E9D8F840062C090 /* Debug */,
 				1B2142AE2E9D8F840062C090 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1BED17CC2EEAD0EE00AB6DAB /* Build configuration list for PBXNativeTarget "FindsAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1BED17CA2EEAD0EE00AB6DAB /* Debug */,
+				1BED17CB2EEAD0EE00AB6DAB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1BED17E82EEAD17400AB6DAB /* Build configuration list for PBXNativeTarget "FindsAppUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1BED17E92EEAD17400AB6DAB /* Debug */,
+				1BED17EA2EEAD17400AB6DAB /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
