@@ -229,7 +229,7 @@ struct ProfileView: View {
     @ViewBuilder
     private var contentSection: some View {
         if isLoading {
-            VStack(spacing: 12) { ProgressView("Loading…") }
+            VStack(spacing: 12) { CustomLoadingView(message: "Loading…") }
                 .frame(maxWidth: .infinity).padding()
         } else if let err = errorMessage {
             VStack(spacing: 8) {
@@ -321,7 +321,7 @@ struct ProfileView: View {
             AsyncImage(url: url) { phase in
                 switch phase {
                 case .empty:
-                    ZStack { Color(.tertiarySystemFill); ProgressView() }
+                    ZStack { Color(.tertiarySystemFill); CustomLoadingView() }
                 case .success(let image):
                     image.resizable().scaledToFill()
                 case .failure:
@@ -560,7 +560,7 @@ struct ProfileView: View {
                     case .empty:
                         Circle().fill(Color(.tertiarySystemFill))
                             .frame(width: 56, height: 56)
-                            .overlay { ProgressView() }
+                            .overlay { CustomLoadingView() }
                     case .success(let img):
                         img.resizable()
                             .scaledToFill()

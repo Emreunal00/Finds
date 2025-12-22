@@ -77,7 +77,7 @@ struct ContentView: View {
 
                         Group {
                             if homeVM.isLoading && homeVM.trending.isEmpty && homeVM.suggestions.isEmpty && homeVM.trendingShows.isEmpty && homeVM.suggestedShows.isEmpty {
-                                ProgressView("Loading…")
+                                CustomLoadingView(message: "Loading…")
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                             } else if let err = homeVM.error,
                                       homeVM.trending.isEmpty && homeVM.suggestions.isEmpty && homeVM.trendingShows.isEmpty && homeVM.suggestedShows.isEmpty {
@@ -258,7 +258,7 @@ private struct PosterHScroll: View {
                 case .empty:
                     ZStack {
                         Color(.tertiarySystemFill)
-                        ProgressView()
+                        CustomLoadingView()
                     }
                 case .success(let image):
                     image.resizable().scaledToFill()

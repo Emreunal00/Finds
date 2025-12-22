@@ -72,7 +72,7 @@ struct FavoritesListView: View {
     var body: some View {
         List {
             if isLoading {
-                HStack { Spacer(); ProgressView("Loading…"); Spacer() }
+                HStack { Spacer(); CustomLoadingView(message: "Loading…"); Spacer() }
             } else if let err = errorMessage {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Failed to load").font(.headline)
@@ -224,7 +224,7 @@ struct FavoritesListView: View {
             AsyncImage(url: url) { phase in
                 switch phase {
                 case .empty:
-                    ZStack { Color(.tertiarySystemFill); ProgressView() }
+                    ZStack { Color(.tertiarySystemFill); CustomLoadingView() }
                 case .success(let image):
                     image.resizable().scaledToFill()
                 case .failure:

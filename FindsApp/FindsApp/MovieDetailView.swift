@@ -421,7 +421,7 @@ struct MovieDetailView: View {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .empty:
-                        ZStack { Color(.tertiarySystemFill); ProgressView() }
+                        ZStack { Color(.tertiarySystemFill); CustomLoadingView() }
                     case .success(let image):
                         image.resizable().scaledToFit()
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))

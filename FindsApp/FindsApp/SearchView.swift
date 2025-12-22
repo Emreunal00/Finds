@@ -169,7 +169,7 @@ struct SearchView: View {
     @ViewBuilder
     private var content: some View {
         if vm.isLoading {
-            ProgressView("Loading…")
+            CustomLoadingView(message: "Loading…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let err = vm.error {
             VStack(spacing: 8) {
@@ -271,7 +271,7 @@ struct SearchView: View {
             AsyncImage(url: url) { phase in
                 switch phase {
                 case .empty:
-                    ZStack { Color(.tertiarySystemFill); ProgressView() }
+                    ZStack { Color(.tertiarySystemFill); CustomLoadingView() }
                 case .success(let image):
                     image.resizable().scaledToFill()
                 case .failure:

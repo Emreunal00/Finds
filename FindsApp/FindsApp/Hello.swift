@@ -126,7 +126,7 @@ struct Hello: View {
         NavigationStack {
             Group {
                 if isLoading {
-                    ProgressView()
+                    CustomLoadingView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {

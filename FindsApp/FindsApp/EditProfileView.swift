@@ -83,7 +83,7 @@ struct EditProfileView: View {
                     Button {
                         Task { await saveChanges() }
                     } label: {
-                        if isSaving { ProgressView() } else { Text("Save").bold() }
+                        if isSaving { CustomLoadingView() } else { Text("Save").bold() }
                     }
                     .disabled(isSaving || (displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedAvatarID == nil))
                 }
@@ -112,7 +112,7 @@ struct EditProfileView: View {
             } else if let url = URL(string: urlStr) {
                 AsyncImage(url: url) { phase in
                     switch phase {
-                    case .empty: Circle().fill(Color(.tertiarySystemFill)).frame(width: 64, height: 64).overlay { ProgressView() }
+                    case .empty: Circle().fill(Color(.tertiarySystemFill)).frame(width: 64, height: 64).overlay { CustomLoadingView() }
                     case .success(let img): img.resizable().scaledToFill().frame(width: 64, height: 64).clipShape(Circle())
                     case .failure: placeholder
                     @unknown default: placeholder

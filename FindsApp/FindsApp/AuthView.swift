@@ -52,7 +52,7 @@ struct AuthView: View {
                                 }
                             } label: {
                                 HStack {
-                                    if authVM.isLoading { ProgressView().tint(.white) }
+                                    if authVM.isLoading { CustomLoadingView().tint(.white) }
                                     Text("Create Account")
                                 }
                                 .frame(maxWidth: .infinity)
@@ -78,7 +78,7 @@ struct AuthView: View {
                                 Task { await authVM.signIn(email: emailIn, password: passwordIn) }
                             } label: {
                                 HStack {
-                                    if authVM.isLoading { ProgressView().tint(.white) }
+                                    if authVM.isLoading { CustomLoadingView().tint(.white) }
                                     Text("Sign In")
                                 }
                                 .frame(maxWidth: .infinity)

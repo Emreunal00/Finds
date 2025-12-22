@@ -209,7 +209,7 @@ struct ChatView: View {
                                                 AsyncImage(url: url) { phase in
                                                     switch phase {
                                                     case .empty:
-                                                        ProgressView()
+                                                        CustomLoadingView()
                                                     case .success(let img):
                                                         img.resizable().scaledToFill()
                                                     case .failure:

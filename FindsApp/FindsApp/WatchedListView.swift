@@ -68,7 +68,7 @@ struct WatchedListView: View {
     var body: some View {
         List {
             if isLoading {
-                HStack { Spacer(); ProgressView("Loading…"); Spacer() }
+                HStack { Spacer(); CustomLoadingView(message: "Loading…"); Spacer() }
             } else if let err = errorMessage {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Failed to load").font(.headline)
@@ -189,7 +189,7 @@ struct WatchedListView: View {
         if let url = movie.posterURL {
             AsyncImage(url: url) { phase in
                 switch phase {
-                case .empty: ZStack { Color(.tertiarySystemFill); ProgressView() }
+                case .empty: ZStack { Color(.tertiarySystemFill); CustomLoadingView() }
                 case .success(let image): image.resizable().scaledToFill()
                 case .failure: placeholder
                 @unknown default: placeholder

@@ -1,6 +1,11 @@
 import SwiftUI
 import FirebaseFirestore
 
+private let cardTransition: AnyTransition = .asymmetric(
+    insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .center)).animation(.spring(response: 0.41, dampingFraction: 0.79)),
+    removal: .opacity.combined(with: .scale(scale: 0.93, anchor: .center)).animation(.easeInOut(duration: 0.21))
+)
+
 protocol AuthWatchChecking {
     func isWatched(movieID: Int, type: String) -> Bool
 }
@@ -56,7 +61,9 @@ struct PickerView: View {
             return checker.isWatched(movieID: movie.id, type: type)
         }
         if let setProvider = authVM as? (any AuthSetsProviding) {
-            return setProvider.watchedIDs.contains(movie.id)
+            let ids: Set<Int> = setProvider.watchedIDs
+            let mid: Int = movie.id
+            return ids.contains(mid)
         }
         return false
     }
@@ -68,7 +75,9 @@ struct PickerView: View {
             return checker.isInWatchlist(movieID: movie.id, type: type)
         }
         if let setProvider = authVM as? (any AuthSetsProviding) {
-            return setProvider.watchlistIDs.contains(movie.id)
+            let ids: Set<Int> = setProvider.watchlistIDs
+            let mid: Int = movie.id
+            return ids.contains(mid)
         }
         return false
     }
@@ -80,9 +89,219 @@ struct PickerView: View {
             return checker.isFavorite(movieID: movie.id, type: type)
         }
         if let setProvider = authVM as? (any AuthSetsProviding) {
-            return setProvider.favoriteIDs.contains(movie.id)
+            let ids: Set<Int> = setProvider.favoriteIDs
+            let mid: Int = movie.id
+            return ids.contains(mid)
         }
         return false
+    }
+
+    @ViewBuilder
+    private var mainContent: some View {
+        if isLoading {
+            CustomLoadingView(message: "Loading...")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let error {
+            VStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle").font(.largeTitle)
+                Text("Failed to load").font(.headline)
+                Text(error).font(.footnote).foregroundStyle(.secondary)
+                Button("Try Again") { loadMovies() }
+                    .buttonStyle(.borderedProminent)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let movie = movies[safe: currentIndex] {
+            contentForMovie(movie)
+        } else {
+            VStack(spacing: 16) {
+                Image(systemName: "film")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.secondary)
+                Text("No movies available.")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                Button("Reload") { loadMovies() }
+                    .buttonStyle(.borderedProminent)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private func contentForMovie(_ movie: Movie) -> some View {
+        PosterCard(movie: movie,
+                   dragOffset: $dragOffset,
+                   onSwipeLeft: { swiped in
+                       withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                           if !movies.isEmpty {
+                               _ = movies.remove(at: currentIndex)
+                               currentIndex = min(currentIndex, max(movies.count - 1, 0))
+                           }
+                       }
+                       Task { await saveSwipeDecision(for: swiped, decision: .not_recommend) }
+                   },
+                   onSwipeRight: { swiped in
+                       withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                           if !movies.isEmpty {
+                               _ = movies.remove(at: currentIndex)
+                               currentIndex = min(currentIndex, max(movies.count - 1, 0))
+                           }
+                       }
+                       Task { await saveSwipeDecision(for: swiped, decision: .recommend) }
+                   })
+            .id(movie.id)
+            .transition(cardTransition)
+            .animation(.spring(response: 0.40, dampingFraction: 0.85), value: movie.id)
+
+        NavigationLink { MovieDetailView(movie: movie) } label: {
+            Text(movie.title)
+                .font(.title2).bold()
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .padding(.top, 8)
+                .padding(.horizontal, 16)
+        }
+        .buttonStyle(.plain)
+
+        actionButtons(for: movie)
+            .font(.subheadline)
+            .padding(.horizontal, 8)
+
+        if !movie.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            Text(movie.summary)
+                .font(.body)
+                .foregroundStyle(.primary)
+                .padding(.top, 8)
+                .padding(.horizontal, 16)
+        }
+    }
+
+    @ViewBuilder
+    private func actionButtons(for movie: Movie) -> some View {
+        let columns = [GridItem(.flexible(minimum: 120), spacing: 12), GridItem(.flexible(minimum: 120), spacing: 12)]
+        LazyVGrid(columns: columns, alignment: .center, spacing: 12) {
+            Button {
+                let type = (movie.mediaType ?? "movie").lowercased()
+                let key = "\(type):\(movie.id)"
+                if localWatched.contains(key) { localWatched.remove(key) } else { localWatched.insert(key) }
+                Task { await authVM.toggleWatched(movieID: movie.id, type: type) }
+            } label: {
+                Label(isWatched(movie) ? "Watched" : "Watched", systemImage: isWatched(movie) ? "checkmark.circle.fill" : "checkmark.circle")
+                    .labelStyle(.titleAndIcon)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(isWatched(movie) ? .green : .secondary)
+            .disabled(authVM.user == nil)
+
+            Button {
+                let type = (movie.mediaType ?? "movie").lowercased()
+                let key = "\(type):\(movie.id)"
+                if localWatchlist.contains(key) { localWatchlist.remove(key) } else { localWatchlist.insert(key) }
+                Task { await authVM.toggleWatchlist(movieID: movie.id, mediaType: type) }
+            } label: {
+                Label(isInWatchlist(movie) ? "Watchlist" : "Watchlist", systemImage: isInWatchlist(movie) ? "bookmark.fill" : "bookmark")
+                    .labelStyle(.titleAndIcon)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(isInWatchlist(movie) ? .blue : .secondary)
+            .disabled(authVM.user == nil)
+
+            Button {
+                let type = (movie.mediaType ?? "movie").lowercased()
+                let key = "\(type):\(movie.id)"
+                if localFavorites.contains(key) { localFavorites.remove(key) } else { localFavorites.insert(key) }
+                Task { await authVM.toggleFavorite(movieID: movie.id, mediaType: type) }
+            } label: {
+                Label(isFavorite(movie) ? "Favorite" : "Favorite", systemImage: isFavorite(movie) ? "heart.fill" : "heart")
+                    .labelStyle(.titleAndIcon)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(isFavorite(movie) ? .pink : .secondary)
+            .disabled(authVM.user == nil)
+
+            Button {
+                isShowingListsSheet = true
+                if let movie = movies[safe: currentIndex], let uid = authVM.user?.id { startListsListener(uid: uid, movie: movie) }
+            } label: {
+                Label(isInAnyCustomListForCurrent ? "In Lists" : "Add to List",
+                      systemImage: isInAnyCustomListForCurrent ? "text.badge.checkmark" : "text.badge.plus")
+                    .labelStyle(.titleAndIcon)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(isInAnyCustomListForCurrent ? .purple : .secondary)
+            .disabled(authVM.user == nil || movies[safe: currentIndex] == nil)
+
+            Button {
+                if let _ = movies[safe: currentIndex] {
+                    tempRating = userPreviousRating ?? tempRating
+                    isShowingRatingSheet = true
+                }
+            } label: {
+                if let _ = userPreviousRating {
+                    Label(String(format: "Rated"), systemImage: "star.fill")
+                        .labelStyle(.titleAndIcon)
+                        .frame(maxWidth: .infinity)
+                } else {
+                    Label("Rate", systemImage: "star")
+                        .labelStyle(.titleAndIcon)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .buttonStyle(.bordered)
+            .tint(userPreviousRating != nil ? .yellow : .secondary)
+            .disabled(authVM.user == nil || movies[safe: currentIndex] == nil)
+        }
+    }
+
+    private struct PosterCard: View {
+        let movie: Movie
+        @Binding var dragOffset: CGFloat
+        var onSwipeLeft: (Movie) -> Void
+        var onSwipeRight: (Movie) -> Void
+
+        var body: some View {
+            ZStack {
+                AsyncImage(url: movie.posterURL) { phase in
+                    switch phase {
+                    case .empty: CustomLoadingView()
+                    case .success(let image): image.resizable().scaledToFill()
+                    case .failure:
+                        Image(systemName: "film")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 56, height: 68)
+                            .foregroundStyle(.secondary)
+                    @unknown default: EmptyView()
+                    }
+                }
+                .frame(width: 320, height: 500)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        dragOffset = value.translation.width
+                    }
+                    .onEnded { _ in
+                        let threshold: CGFloat = 90
+                        if dragOffset < -threshold {
+                            onSwipeLeft(movie)
+                        } else if dragOffset > threshold {
+                            onSwipeRight(movie)
+                        }
+                        withAnimation(.spring(response: 0.45, dampingFraction: 0.7)) { dragOffset = 0 }
+                    }
+            )
+            .animation(.interactiveSpring(), value: dragOffset)
+            .transition(.asymmetric(insertion: .scale.combined(with: .opacity), removal: .opacity))
+            .offset(x: dragOffset)
+            .rotationEffect(.degrees(Double(dragOffset) / 20))
+            .scaleEffect(1 - min(abs(dragOffset) / 1200, 0.08))
+        }
     }
 
     var body: some View {
@@ -90,200 +309,7 @@ struct PickerView: View {
             ScrollView {
                 VStack(spacing: 28) {
                     Spacer(minLength: 0)
-                    if isLoading {
-                        ProgressView("Loading...")
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if let error {
-                        VStack(spacing: 12) {
-                            Image(systemName: "exclamationmark.triangle").font(.largeTitle)
-                            Text("Failed to load").font(.headline)
-                            Text(error).font(.footnote).foregroundStyle(.secondary)
-                            Button("Try Again") {
-                                loadMovies()
-                            }.buttonStyle(.borderedProminent)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if let movie = movies[safe: currentIndex] {
-                        // Movie poster with swipe gesture
-                        ZStack {
-                            AsyncImage(url: movie.posterURL) { phase in
-                                switch phase {
-                                case .empty: ProgressView()
-                                case .success(let image): image.resizable().scaledToFill()
-                                case .failure:
-                                    Image(systemName: "film")
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(width: 56, height: 68)
-                                        .foregroundStyle(.secondary)
-                                @unknown default: EmptyView()
-                                }
-                            }
-                            .frame(width: 320, height: 500)
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                            // Glow overlay based on drag direction
-                            // REMOVED as per instructions
-                        }
-                        // Interactive effects based on drag
-                        .offset(x: dragOffset)
-                        .rotationEffect(.degrees(Double(dragOffset) / 20))
-                        .scaleEffect(1 - min(abs(dragOffset) / 1200, 0.08))
-                        .gesture(
-                            DragGesture()
-                                .onChanged { value in
-                                    dragOffset = value.translation.width
-                                }
-                                .onEnded { _ in
-                                    let threshold: CGFloat = 90
-                                    // Capture the movie being swiped BEFORE we mutate the array/index
-                                    let swipedMovie = movies[safe: currentIndex]
-
-                                    if dragOffset < -threshold {
-                                        // Swiped left (dislike)
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                            if !movies.isEmpty {
-                                                _ = movies.remove(at: currentIndex)
-                                                currentIndex = min(currentIndex, max(movies.count - 1, 0))
-                                            }
-                                        }
-                                        if let movie = swipedMovie {
-                                            Task { await saveSwipeDecision(for: movie, decision: .not_recommend) }
-                                        }
-                                    } else if dragOffset > threshold {
-                                        // Swiped right (like)
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                            if !movies.isEmpty {
-                                                _ = movies.remove(at: currentIndex)
-                                                currentIndex = min(currentIndex, max(movies.count - 1, 0))
-                                            }
-                                        }
-                                        if let movie = swipedMovie {
-                                            Task { await saveSwipeDecision(for: movie, decision: .recommend) }
-                                        }
-                                    }
-                                    withAnimation(.spring(response: 0.45, dampingFraction: 0.7)) {
-                                        dragOffset = 0
-                                    }
-                                }
-                        )
-                        .animation(.interactiveSpring(), value: dragOffset)
-                        .transition(.asymmetric(insertion: .scale.combined(with: .opacity), removal: .opacity))
-                        // Movie title wrapped with NavigationLink
-                        NavigationLink {
-                            MovieDetailView(movie: movie)
-                        } label: {
-                            Text(movie.title)
-                                .font(.title2).bold()
-                                .lineLimit(2)
-                                .multilineTextAlignment(.center)
-                                .padding(.top, 8)
-                                .padding(.horizontal, 16)
-                        }
-                        .buttonStyle(.plain)
-                        // Action buttons (2-column grid for readability)
-                        let columns = [GridItem(.flexible(minimum: 120), spacing: 12), GridItem(.flexible(minimum: 120), spacing: 12)]
-                        LazyVGrid(columns: columns, alignment: .center, spacing: 12) {
-                            Button {
-                                let type = (movie.mediaType ?? "movie").lowercased()
-                                let key = "\(type):\(movie.id)"
-                                if localWatched.contains(key) { localWatched.remove(key) } else { localWatched.insert(key) }
-                                Task { await authVM.toggleWatched(movieID: movie.id, type: type) }
-                            } label: {
-                                Label(isWatched(movie) ? "Watched" : "Watched", systemImage: isWatched(movie) ? "checkmark.circle.fill" : "checkmark.circle")
-                                    .labelStyle(.titleAndIcon)
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(isWatched(movie) ? .green : .secondary)
-                            .disabled(authVM.user == nil)
-
-                            Button {
-                                let type = (movie.mediaType ?? "movie").lowercased()
-                                let key = "\(type):\(movie.id)"
-                                if localWatchlist.contains(key) { localWatchlist.remove(key) } else { localWatchlist.insert(key) }
-                                Task { await authVM.toggleWatchlist(movieID: movie.id, mediaType: type) }
-                            } label: {
-                                Label(isInWatchlist(movie) ? "Watchlist" : "Watchlist", systemImage: isInWatchlist(movie) ? "bookmark.fill" : "bookmark")
-                                    .labelStyle(.titleAndIcon)
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(isInWatchlist(movie) ? .blue : .secondary)
-                            .disabled(authVM.user == nil)
-
-                            Button {
-                                let type = (movie.mediaType ?? "movie").lowercased()
-                                let key = "\(type):\(movie.id)"
-                                if localFavorites.contains(key) { localFavorites.remove(key) } else { localFavorites.insert(key) }
-                                Task { await authVM.toggleFavorite(movieID: movie.id, mediaType: type) }
-                            } label: {
-                                Label(isFavorite(movie) ? "Favorite" : "Favorite", systemImage: isFavorite(movie) ? "heart.fill" : "heart")
-                                    .labelStyle(.titleAndIcon)
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(isFavorite(movie) ? .pink : .secondary)
-                            .disabled(authVM.user == nil)
-
-                            Button {
-                                isShowingListsSheet = true
-                                if let movie = movies[safe: currentIndex], let uid = authVM.user?.id { startListsListener(uid: uid, movie: movie) }
-                            } label: {
-                                Label(isInAnyCustomListForCurrent ? "In Lists" : "Add to List",
-                                      systemImage: isInAnyCustomListForCurrent ? "text.badge.checkmark" : "text.badge.plus")
-                                    .labelStyle(.titleAndIcon)
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(isInAnyCustomListForCurrent ? .purple : .secondary)
-                            .disabled(authVM.user == nil || movies[safe: currentIndex] == nil)
-
-                            Button {
-                                if let _ = movies[safe: currentIndex] {
-                                    tempRating = userPreviousRating ?? tempRating
-                                    isShowingRatingSheet = true
-                                }
-                            } label: {
-                                if let ur = userPreviousRating {
-                                    Label(String(format: "Rated"), systemImage: "star.fill")
-                                        .labelStyle(.titleAndIcon)
-                                        .frame(maxWidth: .infinity)
-                                } else {
-                                    Label("Rate", systemImage: "star")
-                                        .labelStyle(.titleAndIcon)
-                                        .frame(maxWidth: .infinity)
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(userPreviousRating != nil ? .yellow : .secondary)
-                            .disabled(authVM.user == nil || movies[safe: currentIndex] == nil)
-                        }
-                        .font(.subheadline)
-                        .padding(.horizontal, 8)
-
-                        if !movie.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            Text(movie.summary)
-                                .font(.body)
-                                .foregroundStyle(.primary)
-                                .padding(.top, 8)
-                                .padding(.horizontal, 16)
-                        }
-                    } else {
-                        VStack(spacing: 16) {
-                            Image(systemName: "film")
-                                .font(.system(size: 48))
-                                .foregroundStyle(.secondary)
-                            Text("No movies available.")
-                                .font(.headline)
-                                .foregroundStyle(.secondary)
-                            Button("Reload") {
-                                loadMovies()
-                            }
-                            .buttonStyle(.borderedProminent)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
+                    mainContent
                     Spacer(minLength: 0)
                 }
             }

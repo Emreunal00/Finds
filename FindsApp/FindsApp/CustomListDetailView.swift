@@ -62,7 +62,7 @@ struct CustomListDetailView: View {
     var body: some View {
         Group {
             if isLoading {
-                VStack { ProgressView("Loading…") }.frame(maxWidth: .infinity)
+                VStack { CustomLoadingView(message: "Loading…") }.frame(maxWidth: .infinity)
             } else if let err = errorMessage {
                 VStack(spacing: 8) {
                     Text("Failed to load").font(.headline)
