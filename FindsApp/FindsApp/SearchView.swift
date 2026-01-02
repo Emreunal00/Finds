@@ -46,18 +46,18 @@ struct SearchView: View {
     var body: some View {
         NavigationStack {
             ZStack(alignment: .top) {
-                if showYearFilterWhenSearched {
-                    HStack(spacing: 0) {
-                        floatingSearchBar
-                            .frame(minWidth: 220, maxWidth: 320)
-                        floatingYearButton
-                    }
-                    .frame(maxWidth: 400)
-                    .padding(.top, 0)
-                    .frame(maxWidth: .infinity)
-                } else {
+                HStack(spacing: 0) {
                     floatingSearchBar
+                        .frame(minWidth: 220, maxWidth: showYearFilterWhenSearched ? 320 : 600)
+                        .layoutPriority(1)
+                    floatingYearButton
+                        .opacity(showYearFilterWhenSearched ? 1 : 0)
+                        .allowsHitTesting(showYearFilterWhenSearched)
+                        .frame(width: showYearFilterWhenSearched ? nil : 0)
                 }
+                .padding(.top, 0)
+                .frame(maxWidth: .infinity)
+                .animation(.default, value: showYearFilterWhenSearched)
 
                 VStack(spacing: 12) {
                     Spacer(minLength: 90) // leave space for floating bar
@@ -184,7 +184,6 @@ struct SearchView: View {
         vm.selectedGenreID = nil
         vm.selectedYear = nil
         hasSearched = false
-        searchFocused = false
     }
 
     // MARK: - Content
