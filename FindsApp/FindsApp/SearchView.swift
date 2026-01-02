@@ -45,11 +45,26 @@ struct SearchView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 12) {
-                searchControlsTop
-                content
+            ZStack(alignment: .top) {
+                if showYearFilterWhenSearched {
+                    HStack(spacing: 0) {
+                        floatingSearchBar
+                            .frame(minWidth: 220, maxWidth: 320)
+                        floatingYearButton
+                    }
+                    .frame(maxWidth: 400)
+                    .padding(.top, 0)
+                    .frame(maxWidth: .infinity)
+                } else {
+                    floatingSearchBar
+                }
+
+                VStack(spacing: 12) {
+                    Spacer(minLength: 90) // leave space for floating bar
+                    content
+                }
+                .padding(.horizontal)
             }
-            .padding(.horizontal)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .task {
@@ -62,6 +77,42 @@ struct SearchView: View {
                 performFullReset()
             }
         }
+    }
+
+    private var floatingYearButton: some View {
+        Menu {
+            Picker("Year", selection: $vm.selectedYear) {
+                Text("All").tag(Int?.none)
+                ForEach((1899...Calendar.current.component(.year, from: Date())).reversed(), id: \.self) { y in
+                    Text(verbatim: String(y)).tag(Int?.some(y))
+                }
+            }
+        } label: {
+            Image(systemName: "calendar")
+                .imageScale(.large)
+                .font(.system(size: 22, weight: .regular))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(.ultraThickMaterial)
+                )
+                .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 4)
+                .accessibilityLabel("Year")
+        }
+        .padding(.horizontal, 2)
+    }
+
+    private var floatingSearchBar: some View {
+        searchControlsTop
+            .padding(.horizontal, 10)
+            .padding(.vertical, 16)
+            .background(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(.ultraThickMaterial)
+            )
+            .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 4)
+            .padding(.horizontal, 8)
     }
 
     // MARK: - Search controls
@@ -107,38 +158,9 @@ struct SearchView: View {
                         }
                     }
             }
-            .padding(.horizontal, 16) // yatay padding artırıldı
-            .padding(.vertical, 14)   // dikey padding artırıldı (yüksekliği büyütür)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous) // köşe yarıçapı artırıldı
-                    .fill(Color(.secondarySystemBackground))
-            )
+            // Removed padding and background from here to be applied in floatingSearchBar container
 
             Spacer(minLength: 8)
-
-            // Sağdaki filtre ikonları (YIL butonu sadece aramadan sonra görünür)
-            if showYearFilterWhenSearched {
-                HStack(spacing: 10) {
-                    Menu {
-                        Picker("Year", selection: $vm.selectedYear) {
-                            Text("All").tag(Int?.none)
-                            ForEach((1899...Calendar.current.component(.year, from: Date())).reversed(), id: \.self) { y in
-                                Text(verbatim: String(y)).tag(Int?.some(y))
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "calendar")
-                            .imageScale(.large)
-                            .font(.system(size: 22, weight: .regular)) // ikon biraz büyüsün
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 8)
-                            .background(
-                                Circle().fill(Color(.secondarySystemBackground))
-                            )
-                            .accessibilityLabel("Year")
-                    }
-                }
-            }
         }
         .font(.footnote)
     }
