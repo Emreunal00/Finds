@@ -52,12 +52,13 @@ struct AuthView: View {
                                 }
                             } label: {
                                 HStack {
-                                    if authVM.isLoading { CustomLoadingView().tint(.white) }
+                                    if authVM.isLoading {}
                                     Text("Create Account")
                                 }
                                 .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.borderedProminent)
+                            .tint(.green)
                             .disabled(authVM.isLoading
                                       || emailUp.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                                       || passwordUp.count < 6
@@ -78,12 +79,14 @@ struct AuthView: View {
                                 Task { await authVM.signIn(email: emailIn, password: passwordIn) }
                             } label: {
                                 HStack {
-                                    if authVM.isLoading { CustomLoadingView().tint(.white) }
+                                    if authVM.isLoading {}
                                     Text("Sign In")
                                 }
                                 .frame(maxWidth: .infinity)
+                                
                             }
                             .buttonStyle(.borderedProminent)
+                            .tint(.green)
                             .disabled(authVM.isLoading
                                       || emailIn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                                       || passwordIn.isEmpty)

@@ -83,7 +83,7 @@ struct EditProfileView: View {
                     Button {
                         Task { await saveChanges() }
                     } label: {
-                        if isSaving { CustomLoadingView() } else { Text("Save").bold() }
+                        if isSaving {Text("Save")} else { Text("Save")}
                     }
                     .disabled(isSaving || (displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedAvatarID == nil))
                 }

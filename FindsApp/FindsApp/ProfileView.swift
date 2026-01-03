@@ -47,6 +47,9 @@ struct ProfileView: View {
     @State private var showingEditProfile = false
     @State private var userCustomLists: [ProfileCustomUserList] = []
     @State private var listsListener: ListenerRegistration? = nil
+    
+    @State private var pendingDeletionMovie: Movie? = nil
+    @State private var pendingDeletionCustomList: ProfileCustomUserList? = nil
 
     @State private var showingNewListPrompt = false
     @State private var newListName: String = ""
@@ -128,6 +131,26 @@ struct ProfileView: View {
                     .padding(.vertical, 12)
                 }
                 .padding(.bottom, 16)
+            }
+            .confirmationDialog("Remove from \(selectedTab.rawValue)?", isPresented: .constant(pendingDeletionMovie != nil), presenting: pendingDeletionMovie) { movie in
+                Button("Remove", role: .destructive) {
+                    let id = movie.id
+                    let type = movie.mediaType
+                    Task { await removeFromCurrentList(movieID: id, mediaType: type) }
+                    pendingDeletionMovie = nil
+                }
+                Button("Cancel", role: .cancel) { pendingDeletionMovie = nil }
+            } message: { movie in
+                Text("This will remove \(movie.title) from your \(selectedTab.rawValue).")
+            }
+            .confirmationDialog("Delete list?", isPresented: .constant(pendingDeletionCustomList != nil), presenting: pendingDeletionCustomList) { list in
+                Button("Delete", role: .destructive) {
+                    Task { await deleteCustomList(listID: list.id) }
+                    pendingDeletionCustomList = nil
+                }
+                Button("Cancel", role: .cancel) { pendingDeletionCustomList = nil }
+            } message: { list in
+                Text("This will permanently delete the list \"\(list.name)\".")
             }
             .navigationTitle("Profile")
             .sheet(isPresented: $showingEditProfile) {
@@ -367,7 +390,7 @@ struct ProfileView: View {
                                         }
                                         Spacer()
                                         Button(role: .destructive) {
-                                            Task { await deleteCustomList(listID: list.id) }
+                                            pendingDeletionCustomList = list
                                         } label: {
                                             Image(systemName: "minus.circle.fill").foregroundStyle(selectedTab.tint)
                                         }
@@ -397,7 +420,7 @@ struct ProfileView: View {
                     Text(movie.title).font(.headline)
                     Spacer()
                     Button {
-                        Task { await removeFromCurrentList(movieID: movie.id, mediaType: movie.mediaType) }
+                        pendingDeletionMovie = movie
                     } label: {
                         Image(systemName: "minus.circle.fill").foregroundStyle(selectedTab.tint)
                     }
@@ -719,3 +742,4 @@ struct ProfileView: View {
     ProfileView()
         .environmentObject(AuthViewModel())
 }
+
