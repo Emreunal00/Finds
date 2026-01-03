@@ -60,7 +60,7 @@ struct MainTabView: View {
             PickerView()
                 .tabItem {
                     VStack {
-                        Image(systemName: "square.grid.2x2")
+                        Image(systemName: "gamecontroller.fill")
                             .renderingMode(.original)
                             .foregroundColor(.primary)
                     }
