@@ -101,7 +101,6 @@ struct AuthView: View {
 
                 Spacer()
             }
-            .background(LinearGradient(colors: [Color(.systemBackground), Color(.secondarySystemBackground)], startPoint: .top, endPoint: .bottom).ignoresSafeArea())
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
         }

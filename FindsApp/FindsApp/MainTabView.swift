@@ -1,5 +1,12 @@
 import SwiftUI
 
+private extension View {
+    @ViewBuilder
+    func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+        if condition { transform(self) } else { self }
+    }
+}
+
 enum MainTab: Int {
     case home = 0
     case search = 1
@@ -22,34 +29,55 @@ struct MainTabView: View {
         TabView(selection: $selectedTab) {
             ContentView()
                 .tabItem {
-                    Label("Home", systemImage: "house.fill")
+                    VStack {
+                        Image(systemName: "house.fill")
+                            .renderingMode(.original)
+                            .foregroundColor(.primary)
+                    }
                 }
                 .tag(MainTab.home)
 
             SearchView(resetToken: $searchResetToken)
                 .tabItem {
-                    Label("Search", systemImage: "magnifyingglass")
+                    VStack {
+                        Image(systemName: "magnifyingglass")
+                            .renderingMode(.original)
+                            .foregroundColor(.primary)
+                    }
                 }
                 .tag(MainTab.search)
 
             ChatView()
                 .tabItem {
-                    Label("Chat", systemImage: "bubble.left.and.bubble.right.fill")
+                    VStack {
+                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                            .renderingMode(.original)
+                            .foregroundColor(.primary)
+                    }
                 }
                 .tag(MainTab.chat)
 
             PickerView()
                 .tabItem {
-                    Label("Picker", systemImage: "square.grid.2x2")
+                    VStack {
+                        Image(systemName: "square.grid.2x2")
+                            .renderingMode(.original)
+                            .foregroundColor(.primary)
+                    }
                 }
                 .tag(MainTab.picker)
 
             ProfileView()
                 .tabItem {
-                    Label("Profile", systemImage: "person.crop.circle")
+                    VStack {
+                        Image(systemName: "person.crop.circle")
+                            .renderingMode(.original)
+                            .foregroundColor(.primary)
+                    }
                 }
                 .tag(MainTab.profile)
         }
+        .tint(.green)
         .onChange(of: selectedTab) { newValue in
             // Aynı tab tekrar seçildiyse ve bu Search tab ise reset tetikle
             if lastSelectedTab == newValue, newValue == .search {
@@ -64,3 +92,4 @@ struct MainTabView: View {
     MainTabView()
         .environmentObject(AuthViewModel())
 }
+

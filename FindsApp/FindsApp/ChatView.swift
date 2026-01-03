@@ -329,13 +329,13 @@ struct ChatView: View {
                         Circle()
                             .fill(
                                 LinearGradient(
-                                    colors: [Color.blue, Color.blue.opacity(0.75)],
+                                    colors: [Color.green, Color.green.opacity(0.75)],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )
                             )
                     )
-                    .shadow(color: .purple.opacity(0.35), radius: 8, x: 0, y: 4)
+                    .shadow(color: .green.opacity(0.35), radius: 8, x: 0, y: 4)
             }
             .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }

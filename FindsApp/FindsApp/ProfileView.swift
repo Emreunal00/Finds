@@ -47,12 +47,17 @@ struct ProfileView: View {
     @State private var showingEditProfile = false
     @State private var userCustomLists: [ProfileCustomUserList] = []
     @State private var listsListener: ListenerRegistration? = nil
+
+    @State private var showingNewListPrompt = false
+    @State private var newListName: String = ""
+
     private let service: MovieServicing = MovieService()
 
     enum ListTab: String, CaseIterable, Identifiable {
         case favorites = "Favorites"
         case watchlist = "Watchlist"
         case watched = "Watched"
+        case custom = "My Lists"
 
         var id: String { rawValue }
         var icon: String {
@@ -60,6 +65,7 @@ struct ProfileView: View {
             case .favorites: return "heart.fill"
             case .watchlist: return "bookmark.fill"
             case .watched: return "checkmark.circle.fill"
+            case .custom: return "list.bullet"
             }
         }
         var tint: Color {
@@ -67,6 +73,23 @@ struct ProfileView: View {
             case .favorites: return .pink
             case .watchlist: return .blue
             case .watched: return .green
+            case .custom: return .purple
+            }
+        }
+        var emptyTitle: String {
+            switch self {
+            case .favorites: return "No favorites"
+            case .watchlist: return "Watchlist is empty"
+            case .watched: return "No watched items"
+            case .custom: return "No custom lists"
+            }
+        }
+        var emptySubtitle: String {
+            switch self {
+            case .favorites: return "Use the heart icon to add items to your favorites."
+            case .watchlist: return "Use the bookmark icon to save items to your watchlist."
+            case .watched: return "Use the checkmark to mark items as watched."
+            case .custom: return "Create and manage your own collections."
             }
         }
     }
@@ -85,6 +108,8 @@ struct ProfileView: View {
                     .padding(.horizontal)
                     .padding(.top, 4)
                     .onChange(of: selectedTab) { _ in
+                        showingNewListPrompt = false
+                        newListName = ""
                         Task { await loadCurrentList(limitToFive: true) }
                     }
 
@@ -114,7 +139,15 @@ struct ProfileView: View {
                 if let uid = authVM.user?.id { startCustomListsListener(uid: uid) }
             }
             .onChange(of: authVM.listsVersion) { _ in Task { await loadCurrentList(limitToFive: true) } }
-            .onDisappear { stopCustomListsListener() }
+            .onChange(of: navPath) { _ in
+                showingNewListPrompt = false
+                newListName = ""
+            }
+            .onDisappear {
+                showingNewListPrompt = false
+                newListName = ""
+                stopCustomListsListener()
+            }
             .navigationDestination(for: ListTab.self) { tab in
                 switch tab {
                 case .favorites:
@@ -123,6 +156,8 @@ struct ProfileView: View {
                     WatchlistListView().environmentObject(authVM)
                 case .watched:
                     WatchedListView().environmentObject(authVM)
+                case .custom:
+                    VStack { Text("Custom Lists") }
                 }
             }
         }
@@ -182,39 +217,10 @@ struct ProfileView: View {
                             Spacer()
                             Text("\(u.watchedEntries.count)").foregroundStyle(.secondary)
                         }
-                    }
-                    .padding()
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-                .padding(.horizontal)
-
-                Group {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Custom Lists")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        if userCustomLists.isEmpty {
-                            Text("No custom lists yet.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            VStack(alignment: .leading, spacing: 8) {
-                                ForEach(userCustomLists) { list in
-                                    NavigationLink {
-                                        CustomListDetailView(list: list)
-                                            .environmentObject(authVM)
-                                    } label: {
-                                        HStack {
-                                            Text(list.name)
-                                                .font(.body)
-                                            Spacer()
-                                            Image(systemName: "chevron.right")
-                                                .imageScale(.small)
-                                                .foregroundStyle(.tertiary)
-                                        }
-                                    }
-                                }
-                            }
+                        HStack {
+                            Label("My Lists", systemImage: "list.bullet").foregroundStyle(.purple)
+                            Spacer()
+                            Text("\(userCustomLists.count)").foregroundStyle(.secondary)
                         }
                     }
                     .padding()
@@ -238,44 +244,146 @@ struct ProfileView: View {
                 Button("Retry") { Task { await loadCurrentList(limitToFive: true) } }.buttonStyle(.borderedProminent)
             }
             .frame(maxWidth: .infinity).padding(.horizontal).padding(.top, 8)
-        } else if movies.isEmpty {
-            VStack(spacing: 8) {
-                Image(systemName: selectedTab.icon)
-                    .font(.system(size: 28))
-                    .foregroundStyle(selectedTab.tint)
-                Text(emptyTitle).font(.headline)
-                Text(emptySubtitle).font(.footnote).foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity).padding(.horizontal).padding(.top, 8)
-        } else {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(movies) { movie in
-                    NavigationLink { MovieDetailView(movie: movie) } label: { row(for: movie) }
-                        .buttonStyle(.plain)
-                        .onAppear { ratingsCache.loadIfNeeded(for: movie) }
-                    Divider()
+        } else if selectedTab != .custom {
+            if movies.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: selectedTab.icon)
+                        .font(.system(size: 28))
+                        .foregroundStyle(selectedTab.tint)
+                    Text(selectedTab.emptyTitle).font(.headline)
+                    Text(selectedTab.emptySubtitle).font(.footnote).foregroundStyle(.secondary)
                 }
+                .frame(maxWidth: .infinity).padding(.horizontal).padding(.top, 8)
+            } else {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(movies) { movie in
+                        NavigationLink { MovieDetailView(movie: movie) } label: { row(for: movie) }
+                            .buttonStyle(.plain)
+                            .onAppear { ratingsCache.loadIfNeeded(for: movie) }
+                        Divider()
+                    }
 
-                if showAllButton {
-                    Button {
-                        navPath.append(selectedTab)
-                    } label: {
-                        HStack {
-                            Spacer()
-                            Text("All")
-                                .font(.subheadline.weight(.semibold))
-                            Image(systemName: "chevron.right")
-                                .imageScale(.small)
+                    if showAllButton {
+                        Button {
+                            navPath.append(selectedTab)
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Text("All")
+                                    .font(.subheadline.weight(.semibold))
+                                Image(systemName: "chevron.right")
+                                    .imageScale(.small)
+                                Spacer()
+                            }
+                            .padding(.vertical, 10)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(selectedTab.tint)
+                        .padding(.vertical, 8)
+                    }
+                }
+                .padding(.horizontal).padding(.top, 8)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 12) {
+                Button {
+                    newListName = ""
+                    showingNewListPrompt = true
+                } label: {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color(.secondarySystemBackground))
+                        HStack(spacing: 12) {
+                            Image(systemName: "plus.circle.fill")
+                                .foregroundStyle(.purple)
+                            Text("New List")
+                                .font(.headline)
+                                .foregroundColor(.primary)
                             Spacer()
                         }
-                        .padding(.vertical, 10)
+                        .padding(12)
                     }
-                    .buttonStyle(.bordered)
-                    .tint(selectedTab.tint)
-                    .padding(.vertical, 8)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal)
+                .padding(.top, 4)
+
+                if showingNewListPrompt {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Create New List").font(.headline)
+                        TextField("List name", text: $newListName)
+                            .textFieldStyle(.roundedBorder)
+                        HStack {
+                            Button("Cancel") { showingNewListPrompt = false }
+                            Spacer()
+                            Button("Create") {
+                                let name = newListName.trimmingCharacters(in: .whitespacesAndNewlines)
+                                guard !name.isEmpty else { return }
+                                Task {
+                                    await createNewCustomList(name: name)
+                                    await MainActor.run {
+                                        showingNewListPrompt = false
+                                    }
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(newListName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                    }
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color(.secondarySystemBackground))
+                    )
+                    .padding(.horizontal)
+                }
+
+                if userCustomLists.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: selectedTab.icon)
+                            .font(.system(size: 28))
+                            .foregroundStyle(selectedTab.tint)
+                        Text(selectedTab.emptyTitle).font(.headline)
+                        Text(selectedTab.emptySubtitle).font(.footnote).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                } else {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(userCustomLists) { list in
+                            NavigationLink {
+                                CustomListDetailView(list: list)
+                                    .environmentObject(authVM)
+                            } label: {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(Color(.secondarySystemBackground))
+                                    HStack(spacing: 12) {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(list.name)
+                                                .font(.headline)
+                                                .foregroundColor(.primary)
+                                        }
+                                        Spacer()
+                                        Button(role: .destructive) {
+                                            Task { await deleteCustomList(listID: list.id) }
+                                        } label: {
+                                            Image(systemName: "minus.circle.fill").foregroundStyle(selectedTab.tint)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel("Delete list")
+                                    }
+                                    .padding(12)
+                                }
+                                .padding(.vertical, 4)
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 8)
                 }
             }
-            .padding(.horizontal).padding(.top, 8)
         }
     }
 
@@ -361,25 +469,6 @@ struct ProfileView: View {
         return u.watchedEntries
     }
 
-    private func emptyTitleText(for tab: ListTab) -> String {
-        switch tab {
-        case .favorites: return "No favorites"
-        case .watchlist: return "Watchlist is empty"
-        case .watched: return "No watched items"
-        }
-    }
-
-    private func emptySubtitleText(for tab: ListTab) -> String {
-        switch tab {
-        case .favorites: return "Use the heart icon to add items to your favorites."
-        case .watchlist: return "Use the bookmark icon to save items to your watchlist."
-        case .watched: return "Use the checkmark to mark items as watched."
-        }
-    }
-
-    private var emptyTitle: String { emptyTitleText(for: selectedTab) }
-    private var emptySubtitle: String { emptySubtitleText(for: selectedTab) }
-
     // MARK: - Firestore Custom Lists
 
     private func startCustomListsListener(uid: String) {
@@ -405,6 +494,34 @@ struct ProfileView: View {
     private func stopCustomListsListener() {
         listsListener?.remove()
         listsListener = nil
+    }
+
+    // MARK: - Create Custom List
+    private func createNewCustomList(name: String) async {
+        guard let uid = authVM.user?.id else { return }
+        let db = Firestore.firestore()
+        let listsRef = db.collection("users").document(uid).collection("lists")
+        let newDoc = listsRef.document()
+        let payload: [String: Any] = [
+            "name": name,
+            "createdAt": FieldValue.serverTimestamp()
+        ]
+        do {
+            try await newDoc.setData(payload)
+        } catch {
+            await MainActor.run { self.errorMessage = "Couldn't create list. Please try again." }
+        }
+    }
+
+    private func deleteCustomList(listID: String) async {
+        guard let uid = authVM.user?.id else { return }
+        let db = Firestore.firestore()
+        let docRef = db.collection("users").document(uid).collection("lists").document(listID)
+        do {
+            try await docRef.delete()
+        } catch {
+            await MainActor.run { self.errorMessage = "Couldn't delete list. Please try again." }
+        }
     }
 
     // MARK: - Data loading
@@ -507,6 +624,9 @@ struct ProfileView: View {
                 }
                 movies = fetched
             }
+        case .custom:
+            movies = []
+            return
         }
     }
 
@@ -519,6 +639,8 @@ struct ProfileView: View {
             return u.watchlistEntries.count > 5
         case .watched:
             return u.watchedEntries.count > 5
+        case .custom:
+            return false
         }
     }
 
@@ -531,6 +653,8 @@ struct ProfileView: View {
         case .watched:
             let type = mediaType ?? "movie"
             await authVM.toggleWatched(movieID: movieID, type: type)
+        case .custom:
+            break
         }
         movies.removeAll { $0.id == movieID }
     }

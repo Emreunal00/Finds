@@ -168,11 +168,6 @@ struct ContentView: View {
             .refreshable {
                 await homeVM.load(userID: authVM.user?.id)
             }
-            .background(
-                LinearGradient(colors: [Color(.systemBackground), Color(.secondarySystemBackground)],
-                               startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea()
-            )
             .fullScreenCover(isPresented: $showOnboarding) {
                 Hello()
                     .environmentObject(authVM)
