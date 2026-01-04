@@ -53,7 +53,7 @@
 		1B2142A12E9D8F820062C090 /* FindsApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FindsApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1BED17C42EEAD0EE00AB6DAB /* FindsAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FindsAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1BED17E02EEAD17400AB6DAB /* FindsAppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FindsAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		1BF6E6FB2EF99B1B007D86D6 /* FindsApp.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = file; path = FindsApp.xctestplan; sourceTree = "<group>"; };
+		1BF6E6FB2EF99B1B007D86D6 /* FindsApp.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = FindsApp.xctestplan; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */

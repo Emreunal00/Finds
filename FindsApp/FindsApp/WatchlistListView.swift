@@ -54,6 +54,9 @@ struct WatchlistListView: View {
     @State private var originalEntries: [WatchedEntry] = []
     @State private var invalid: [WatchedEntry] = []
 
+    @State private var pendingDeletionMovie: Movie? = nil
+    @State private var showingDeletionConfirm = false
+
     @StateObject private var ratingsCache = WatchlistRatingsCache.shared
 
     private let service: MovieServicing = MovieService()
@@ -88,7 +91,7 @@ struct WatchlistListView: View {
                 }
 
                 ForEach(sortedMovies()) { movie in
-                    NavigationLink { MovieDetailView(movie: movie) } label: {
+                    ZStack {
                         HStack(spacing: 12) {
                             poster(for: movie)
                                 .frame(width: 50, height: 75)
@@ -105,8 +108,19 @@ struct WatchlistListView: View {
                             }
                             Spacer()
                         }
+                        NavigationLink { MovieDetailView(movie: movie) } label: { EmptyView() }
+                            .opacity(0)
                     }
                     .onAppear { ratingsCache.loadIfNeeded(for: movie) }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            pendingDeletionMovie = movie
+                            showingDeletionConfirm = true
+                        } label: {
+                            Label("Remove", systemImage: "trash.fill")
+                        }
+                        .tint(.red)
+                    }
                 }
             }
         }
@@ -124,6 +138,44 @@ struct WatchlistListView: View {
         }
         .task { await loadAll() }
         .onChange(of: authVM.listsVersion) { _ in Task { await loadAll() } }
+        .overlay {
+            if showingDeletionConfirm, let movie = pendingDeletionMovie {
+                ZStack {
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                    VStack(spacing: 16) {
+                        Text("Remove from Watchlist?")
+                            .font(.headline)
+                        Text("This will remove \(movie.title) from your Watchlist.")
+                            .multilineTextAlignment(.center)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        HStack {
+                            Button("Cancel") {
+                                showingDeletionConfirm = false
+                                pendingDeletionMovie = nil
+                            }
+                            .buttonStyle(.bordered)
+                            Spacer()
+                            Button("Remove") {
+                                removeFromWatchlist(movie)
+                                showingDeletionConfirm = false
+                                pendingDeletionMovie = nil
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.red)
+                        }
+                    }
+                    .padding(24)
+                    .frame(maxWidth: 320)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color(.systemBackground))
+                    )
+                    .padding(.horizontal, 40)
+                }
+            }
+        }
     }
 
     private func loadAll() async {
@@ -175,6 +227,19 @@ struct WatchlistListView: View {
             return newestFirst.compactMap { map[$0.id] }
         }
         movies = fetched
+    }
+
+    // MARK: - Deletion
+
+    private func removeFromWatchlist(_ movie: Movie) {
+        // Optimistically update local UI
+        movies.removeAll { $0.id == movie.id }
+        originalEntries.removeAll { $0.id == movie.id }
+
+        // Persist the change (AuthViewModel handles toggling)
+        Task { @MainActor in
+            await authVM.toggleWatchlist(movieID: movie.id, mediaType: (movie.mediaType ?? "movie"))
+        }
     }
 
     private func sortedMovies() -> [Movie] {

@@ -50,6 +50,9 @@ struct FavoritesListView: View {
     @State private var errorMessage: String?
     @State private var sort: SortOption = .addedNewestFirst
 
+    @State private var pendingDeletionMovie: Movie? = nil
+    @State private var showingDeletionConfirm = false
+
     // Eklenme sırası referansı (typed entries)
     @State private var originalEntries: [WatchedEntry] = []
     // TMDb’de bulunmayanlar (404) için bilgi
@@ -90,7 +93,7 @@ struct FavoritesListView: View {
                 }
 
                 ForEach(sortedMovies()) { movie in
-                    NavigationLink { MovieDetailView(movie: movie) } label: {
+                    ZStack {
                         HStack(spacing: 12) {
                             poster(for: movie)
                                 .frame(width: 50, height: 75)
@@ -107,8 +110,19 @@ struct FavoritesListView: View {
                             }
                             Spacer()
                         }
+                        NavigationLink { MovieDetailView(movie: movie) } label: { EmptyView() }
+                            .opacity(0)
                     }
                     .onAppear { ratingsCache.loadIfNeeded(for: movie) }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            pendingDeletionMovie = movie
+                            showingDeletionConfirm = true
+                        } label: {
+                            Label("Remove", systemImage: "trash.fill")
+                        }
+                        .tint(.red)
+                    }
                 }
             }
         }
@@ -129,6 +143,44 @@ struct FavoritesListView: View {
         }
         .task { await loadAll() }
         .onChange(of: authVM.listsVersion) { _ in Task { await loadAll() } }
+        .overlay {
+            if showingDeletionConfirm, let movie = pendingDeletionMovie {
+                ZStack {
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                    VStack(spacing: 16) {
+                        Text("Remove from Favorites?")
+                            .font(.headline)
+                        Text("This will remove \(movie.title) from your Favorites.")
+                            .multilineTextAlignment(.center)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        HStack {
+                            Button("Cancel") {
+                                showingDeletionConfirm = false
+                                pendingDeletionMovie = nil
+                            }
+                            .buttonStyle(.bordered)
+                            Spacer()
+                            Button("Remove") {
+                                removeFromFavorites(movie)
+                                showingDeletionConfirm = false
+                                pendingDeletionMovie = nil
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.red)
+                        }
+                    }
+                    .padding(24)
+                    .frame(maxWidth: 320)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color(.systemBackground))
+                    )
+                    .padding(.horizontal, 40)
+                }
+            }
+        }
     }
 
     // MARK: - Data loading
@@ -187,6 +239,19 @@ struct FavoritesListView: View {
             return newestFirst.compactMap { map[$0.id] }
         }
         movies = fetched
+    }
+
+    // MARK: - Deletion
+
+    private func removeFromFavorites(_ movie: Movie) {
+        // Optimistically update local UI
+        movies.removeAll { $0.id == movie.id }
+        originalEntries.removeAll { $0.id == movie.id }
+
+        // Persist the change (AuthViewModel handles typed vs legacy internally)
+        Task { @MainActor in
+            await authVM.toggleFavorite(movieID: movie.id, mediaType: (movie.mediaType ?? "movie"))
+        }
     }
 
     // MARK: - Sorting
@@ -249,3 +314,4 @@ struct FavoritesListView: View {
         }
     }
 }
+

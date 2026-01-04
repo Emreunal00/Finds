@@ -11,6 +11,7 @@ struct EditProfileView: View {
     @State private var selectedAvatarID: String?
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var showingSignOutConfirm = false
 
     private let availableAvatars: [String] = (1...15).map { "avatar\($0)" }
 
@@ -73,6 +74,16 @@ struct EditProfileView: View {
                             .font(.footnote)
                     }
                 }
+                
+                Section {
+                    Button(role: .destructive) {
+                        showingSignOutConfirm = true
+                    } label: {
+                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .foregroundColor(.red)
+                    }
+                }
             }
             .navigationTitle("Edit Profile")
             .toolbar {
@@ -91,6 +102,43 @@ struct EditProfileView: View {
             .onAppear {
                 displayName = authVM.user?.displayName ?? (Auth.auth().currentUser?.displayName ?? "")
                 if let urlStr = authVM.user?.photoURL, urlStr.hasPrefix("avatar://") { selectedAvatarID = String(urlStr.dropFirst("avatar://".count)) }
+            }
+            .overlay {
+                if showingSignOutConfirm {
+                    ZStack {
+                        Color.black.opacity(0.4)
+                            .ignoresSafeArea()
+                        VStack(spacing: 16) {
+                            Text("Sign Out")
+                                .font(.headline)
+                            Text("Are you sure you want to sign out?")
+                                .multilineTextAlignment(.center)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            HStack {
+                                Button("Cancel") {
+                                    showingSignOutConfirm = false
+                                }
+                                .buttonStyle(.bordered)
+                                Spacer()
+                                Button("Sign Out") {
+                                    authVM.signOut()
+                                    showingSignOutConfirm = false
+                                    dismiss()
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.red)
+                            }
+                        }
+                        .padding(24)
+                        .frame(maxWidth: 320)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(Color(.systemBackground))
+                        )
+                        .padding(.horizontal, 40)
+                    }
+                }
             }
         }
     }

@@ -50,6 +50,7 @@ struct ProfileView: View {
     
     @State private var pendingDeletionMovie: Movie? = nil
     @State private var pendingDeletionCustomList: ProfileCustomUserList? = nil
+    @State private var showingSignOutConfirm = false
 
     @State private var showingNewListPrompt = false
     @State private var newListName: String = ""
@@ -119,38 +120,11 @@ struct ProfileView: View {
                     contentSection
 
                     Group {
-                        Button(role: .destructive) {
-                            authVM.signOut()
-                        } label: {
-                            Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
                     }
                     .padding(.horizontal)
                     .padding(.vertical, 12)
                 }
                 .padding(.bottom, 16)
-            }
-            .confirmationDialog("Remove from \(selectedTab.rawValue)?", isPresented: .constant(pendingDeletionMovie != nil), presenting: pendingDeletionMovie) { movie in
-                Button("Remove", role: .destructive) {
-                    let id = movie.id
-                    let type = movie.mediaType
-                    Task { await removeFromCurrentList(movieID: id, mediaType: type) }
-                    pendingDeletionMovie = nil
-                }
-                Button("Cancel", role: .cancel) { pendingDeletionMovie = nil }
-            } message: { movie in
-                Text("This will remove \(movie.title) from your \(selectedTab.rawValue).")
-            }
-            .confirmationDialog("Delete list?", isPresented: .constant(pendingDeletionCustomList != nil), presenting: pendingDeletionCustomList) { list in
-                Button("Delete", role: .destructive) {
-                    Task { await deleteCustomList(listID: list.id) }
-                    pendingDeletionCustomList = nil
-                }
-                Button("Cancel", role: .cancel) { pendingDeletionCustomList = nil }
-            } message: { list in
-                Text("This will permanently delete the list \"\(list.name)\".")
             }
             .navigationTitle("Profile")
             .sheet(isPresented: $showingEditProfile) {
@@ -181,6 +155,120 @@ struct ProfileView: View {
                     WatchedListView().environmentObject(authVM)
                 case .custom:
                     VStack { Text("Custom Lists") }
+                }
+            }
+            .overlay {
+                if let movie = pendingDeletionMovie {
+                    ZStack {
+                        Color.black.opacity(0.4)
+                            .ignoresSafeArea()
+                        VStack(spacing: 16) {
+                            Text("Remove from \(selectedTab.rawValue)?")
+                                .font(.headline)
+                            Text("This will remove \(movie.title) from your \(selectedTab.rawValue).")
+                                .multilineTextAlignment(.center)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            HStack {
+                                Button("Cancel") {
+                                    pendingDeletionMovie = nil
+                                }
+                                .buttonStyle(.bordered)
+                                Spacer()
+                                Button("Remove") {
+                                    let id = movie.id
+                                    let type = movie.mediaType
+                                    Task {
+                                        await removeFromCurrentList(movieID: id, mediaType: type)
+                                    }
+                                    pendingDeletionMovie = nil
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.red)
+                            }
+                        }
+                        .padding(24)
+                        .frame(maxWidth: 320)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(Color(.systemBackground))
+                        )
+                        .padding(.horizontal, 40)
+                    }
+                }
+            }
+            .overlay {
+                if let list = pendingDeletionCustomList {
+                    ZStack {
+                        Color.black.opacity(0.4)
+                            .ignoresSafeArea()
+                        VStack(spacing: 16) {
+                            Text("Delete list?")
+                                .font(.headline)
+                            Text("This will permanently delete the list \"\(list.name)\".")
+                                .multilineTextAlignment(.center)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            HStack {
+                                Button("Cancel") {
+                                    pendingDeletionCustomList = nil
+                                }
+                                .buttonStyle(.bordered)
+                                Spacer()
+                                Button("Delete") {
+                                    Task {
+                                        await deleteCustomList(listID: list.id)
+                                    }
+                                    pendingDeletionCustomList = nil
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.red)
+                            }
+                        }
+                        .padding(24)
+                        .frame(maxWidth: 320)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(Color(.systemBackground))
+                        )
+                        .padding(.horizontal, 40)
+                    }
+                }
+            }
+            .overlay {
+                if showingSignOutConfirm {
+                    ZStack {
+                        Color.black.opacity(0.4)
+                            .ignoresSafeArea()
+                        VStack(spacing: 16) {
+                            Text("Sign Out")
+                                .font(.headline)
+                            Text("Are you sure you want to sign out?")
+                                .multilineTextAlignment(.center)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            HStack {
+                                Button("Cancel") {
+                                    showingSignOutConfirm = false
+                                }
+                                .buttonStyle(.bordered)
+                                Spacer()
+                                Button("Sign Out") {
+                                    authVM.signOut()
+                                    showingSignOutConfirm = false
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.red)
+                            }
+                        }
+                        .padding(24)
+                        .frame(maxWidth: 320)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(Color(.systemBackground))
+                        )
+                        .padding(.horizontal, 40)
+                    }
                 }
             }
         }
@@ -392,7 +480,7 @@ struct ProfileView: View {
                                         Button(role: .destructive) {
                                             pendingDeletionCustomList = list
                                         } label: {
-                                            Image(systemName: "minus.circle.fill").foregroundStyle(selectedTab.tint)
+                                            Image(systemName: "trash.fill").foregroundStyle(selectedTab.tint)
                                         }
                                         .buttonStyle(.plain)
                                         .accessibilityLabel("Delete list")
@@ -422,7 +510,7 @@ struct ProfileView: View {
                     Button {
                         pendingDeletionMovie = movie
                     } label: {
-                        Image(systemName: "minus.circle.fill").foregroundStyle(selectedTab.tint)
+                        Image(systemName: "trash.fill").foregroundStyle(selectedTab.tint)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(Text("Remove from list"))
