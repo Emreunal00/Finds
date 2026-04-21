@@ -63,12 +63,24 @@ struct YourApp: App {
 
   @StateObject private var authVM = AuthViewModel()
   @StateObject private var themeStore = ThemeStore()
+  @State private var shouldShowLaunchProfilePicker = false
+  @State private var lastAuthenticatedUserID: String?
 
   var body: some Scene {
     WindowGroup {
       Group {
         if authVM.user != nil {
-          MainTabView()
+          if shouldShowLaunchProfilePicker {
+            LaunchProfilePickerView(
+              profiles: authVM.user?.profiles ?? [],
+              currentProfileID: authVM.currentProfile?.id
+            ) { profile in
+              shouldShowLaunchProfilePicker = false
+              authVM.selectProfile(profile.id)
+            }
+          } else {
+            MainTabView()
+          }
         } else {
           AuthView()
         }
@@ -76,6 +88,26 @@ struct YourApp: App {
       .preferredColorScheme(themeStore.preference.colorScheme)
       .environmentObject(authVM)
       .environmentObject(themeStore)
+      .onAppear {
+        syncLaunchProfileRequirement(for: authVM.user)
+      }
+      .onChange(of: authVM.user) { user in
+        syncLaunchProfileRequirement(for: user)
+      }
+    }
+  }
+
+  private func syncLaunchProfileRequirement(for user: UserProfile?) {
+    guard let user else {
+      shouldShowLaunchProfilePicker = false
+      lastAuthenticatedUserID = nil
+      return
+    }
+
+    let uid = user.id
+    if uid != lastAuthenticatedUserID {
+      lastAuthenticatedUserID = uid
+      shouldShowLaunchProfilePicker = user.profiles.count > 1
     }
   }
 }
