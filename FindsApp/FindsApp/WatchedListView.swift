@@ -98,7 +98,7 @@ struct WatchedListView: View {
                             }
                             Spacer()
                         }
-                        NavigationLink { MovieDetailView(movie: movie) } label: { EmptyView() }
+                        NavigationLink { MediaDetailDestination(item: movie) } label: { EmptyView() }
                             .opacity(0)
                     }
                     .onAppear { ratingsCache.loadIfNeeded(for: movie) }
@@ -190,13 +190,8 @@ struct WatchedListView: View {
                 for entry in newestFirst {
                     group.addTask {
                         do {
-                            if entry.type == "movie" {
-                                let m = try await service.fetchMovieBasic(id: entry.id)
-                                return (entry.id, m)
-                            } else {
-                                let tv = try await service.fetchTVBasic(id: entry.id)
-                                return (entry.id, tv)
-                            }
+                            let media = try await BookCatalog.fetchMedia(id: entry.id, type: entry.type, service: service)
+                            return (entry.id, media)
                         } catch {
                             return (entry.id, nil)
                         }

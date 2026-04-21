@@ -29,7 +29,7 @@ struct PickerView: View {
     @State private var isLoading: Bool = true
     @State private var error: String? = nil
 
-    enum ContentKind: String, CaseIterable, Identifiable { case movies = "Movies", tv = "TV"; var id: String { rawValue } }
+    enum ContentKind: String, CaseIterable, Identifiable { case movies = "Movies", tv = "TV", books = "Books"; var id: String { rawValue } }
     @State private var kind: ContentKind = .movies
 
     @State private var localWatched: Set<String> = []
@@ -117,10 +117,10 @@ struct PickerView: View {
             contentForMovie(movie)
         } else {
             VStack(spacing: 16) {
-                Image(systemName: "film")
+                Image(systemName: kind == .books ? "book.closed" : "film")
                     .font(.system(size: 48))
                     .foregroundStyle(.secondary)
-                Text("No movies available.")
+                Text(kind == .books ? "No books available." : "No titles available.")
                     .font(.headline)
                     .foregroundStyle(.secondary)
                 Button("Reload") { loadMovies() }
@@ -139,6 +139,7 @@ struct PickerView: View {
     private func actionButtons(for movie: Movie) -> some View {
         ActionButtonsView(
             movie: movie,
+            prefersBookLabels: kind == .books,
             isWatched: isWatched(movie),
             isInWatchlist: isInWatchlist(movie),
             isFavorite: isFavorite(movie),
@@ -198,7 +199,7 @@ struct PickerView: View {
                 .transition(cardTransition)
                 .animation(.spring(response: 0.40, dampingFraction: 0.85), value: movie.id)
 
-            NavigationLink { MovieDetailView(movie: movie) } label: {
+            NavigationLink { MediaDetailDestination(item: movie) } label: {
                 Text(movie.title)
                     .font(.title2).bold()
                     .lineLimit(2)
@@ -222,6 +223,7 @@ struct PickerView: View {
 
     private struct ActionButtonsView: View {
         let movie: Movie
+        let prefersBookLabels: Bool
         let isWatched: Bool
         let isInWatchlist: Bool
         let isFavorite: Bool
@@ -238,6 +240,14 @@ struct PickerView: View {
         @Binding var isShowingRatingSheet: Bool
         @Binding var tempRating: Double
 
+        private var watchedLabel: String {
+            prefersBookLabels || movie.isBook ? "Read" : "Watched"
+        }
+
+        private var watchlistLabel: String {
+            prefersBookLabels || movie.isBook ? "Want to Read" : "Watchlist"
+        }
+
         private func watchedButton() -> some View {
             Button {
                 let type = (movie.mediaType ?? "movie").lowercased()
@@ -245,7 +255,7 @@ struct PickerView: View {
                 if localWatched.contains(key) { localWatched.remove(key) } else { localWatched.insert(key) }
                 Task { await authVM.toggleWatched(movieID: movie.id, type: type) }
             } label: {
-                Label(isWatched ? "Watched" : "Watched", systemImage: isWatched ? "checkmark.circle.fill" : "checkmark.circle")
+                Label(watchedLabel, systemImage: isWatched ? "checkmark.circle.fill" : "checkmark.circle")
                     .labelStyle(.titleAndIcon)
                     .frame(maxWidth: .infinity)
             }
@@ -261,7 +271,7 @@ struct PickerView: View {
                 if localWatchlist.contains(key) { localWatchlist.remove(key) } else { localWatchlist.insert(key) }
                 Task { await authVM.toggleWatchlist(movieID: movie.id, mediaType: type) }
             } label: {
-                Label(isInWatchlist ? "Watchlist" : "Watchlist", systemImage: isInWatchlist ? "bookmark.fill" : "bookmark")
+                Label(watchlistLabel, systemImage: isInWatchlist ? "bookmark.fill" : "bookmark")
                     .labelStyle(.titleAndIcon)
                     .frame(maxWidth: .infinity)
             }
@@ -362,7 +372,7 @@ struct PickerView: View {
                     case .empty: CustomLoadingView()
                     case .success(let image): image.resizable().scaledToFill()
                     case .failure:
-                        Image(systemName: "film")
+                        Image(systemName: BookCatalog.symbolName(for: movie))
                             .resizable()
                             .scaledToFit()
                             .frame(width: 56, height: 68)
@@ -1109,6 +1119,18 @@ struct PickerView: View {
                         filtered = shuffled.filter { movie in !disliked.contains(movie.id) }
                     } else {
                         filtered = shuffled
+                    }
+                    await MainActor.run {
+                        self.movies = filtered
+                    }
+                case .books:
+                    let books = await BookCatalog.trendingBooks().shuffled()
+                    let filtered: [Movie]
+                    if let uid = authVM.user?.id {
+                        let disliked = await fetchRecentlyDislikedIDs(uid: uid)
+                        filtered = books.filter { !disliked.contains($0.id) }
+                    } else {
+                        filtered = books
                     }
                     await MainActor.run {
                         self.movies = filtered

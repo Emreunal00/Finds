@@ -112,7 +112,7 @@ struct FavoritesListView: View {
                             }
                             Spacer()
                         }
-                        NavigationLink { MovieDetailView(movie: movie) } label: { EmptyView() }
+                        NavigationLink { MediaDetailDestination(item: movie) } label: { EmptyView() }
                             .opacity(0)
                     }
                     .onAppear { ratingsCache.loadIfNeeded(for: movie) }
@@ -214,13 +214,8 @@ struct FavoritesListView: View {
             for entry in newestFirst {
                 group.addTask {
                     do {
-                        if entry.type.lowercased() == "movie" {
-                            let m = try await service.fetchMovieBasic(id: entry.id)
-                            return (entry, m)
-                        } else {
-                            let tv = try await service.fetchTVBasic(id: entry.id)
-                            return (entry, tv)
-                        }
+                        let media = try await BookCatalog.fetchMedia(id: entry.id, type: entry.type, service: service)
+                        return (entry, media)
                     } catch {
                         let ns = error as NSError
                         if ns.domain == "TMDBHTTP", ns.code == 404 {
@@ -321,4 +316,3 @@ struct FavoritesListView: View {
         }
     }
 }
-

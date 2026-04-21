@@ -80,7 +80,7 @@ struct CustomListDetailView: View {
             } else {
                 List {
                     ForEach(sortedMovies()) { movie in
-                        NavigationLink { MovieDetailView(movie: movie) } label: {
+                        NavigationLink { MediaDetailDestination(item: movie) } label: {
                             row(for: movie)
                         }
                         .onAppear { ratingsCache.loadIfNeeded(for: movie) }
@@ -238,13 +238,8 @@ struct CustomListDetailView: View {
                 for (id, type) in items {
                     group.addTask {
                         do {
-                            if type.lowercased() == "movie" {
-                                let m = try await service.fetchMovieBasic(id: id)
-                                return (id, m)
-                            } else {
-                                let tv = try await service.fetchTVBasic(id: id)
-                                return (id, tv)
-                            }
+                            let media = try await BookCatalog.fetchMedia(id: id, type: type, service: service)
+                            return (id, media)
                         } catch {
                             return (id, nil)
                         }
@@ -272,4 +267,3 @@ struct CustomListDetailView: View {
             .environmentObject(AuthViewModel())
     }
 }
-

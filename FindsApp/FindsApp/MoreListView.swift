@@ -35,6 +35,8 @@ struct MoreListView: View {
         case suggestedMovies
         case trendingTV
         case suggestedTV
+        case trendingBooks
+        case suggestedBooks
 
         var title: String {
             switch self {
@@ -42,6 +44,8 @@ struct MoreListView: View {
             case .suggestedMovies: return "Top picks for you"
             case .trendingTV:     return "Trending shows"
             case .suggestedTV:    return "Suggested shows"
+            case .trendingBooks:  return "Popular books"
+            case .suggestedBooks: return "Recommended books"
             }
         }
     }
@@ -85,7 +89,7 @@ struct MoreListView: View {
             } else {
                 ForEach(sortedMovies()) { movie in
                     NavigationLink {
-                        MovieDetailView(movie: movie)
+                        MediaDetailDestination(item: movie)
                     } label: {
                         HStack(spacing: 12) {
                             poster(for: movie)
@@ -154,9 +158,14 @@ struct MoreListView: View {
                     } else {
                         batch = [] // no fallback, keep only personalized first page
                     }
+                case .trendingBooks:
+                    batch = await BookCatalog.trendingBooks()
+                case .suggestedBooks:
+                    batch = await BookCatalog.recommendedBooks(for: authVM.user?.id)
                 }
                 if batch.isEmpty { break }
                 result.append(contentsOf: batch)
+                if kind == .trendingBooks || kind == .suggestedBooks { break }
                 page += 1
             }
             if result.count > 250 { result = Array(result.prefix(250)) }
@@ -212,7 +221,12 @@ struct MoreListView: View {
         } else if !movie.posterName.isEmpty {
             Image(movie.posterName).resizable().scaledToFill()
         } else {
-            placeholder
+            ZStack {
+                Color(.tertiarySystemFill)
+                Image(systemName: BookCatalog.symbolName(for: movie))
+                    .font(.system(size: 16))
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

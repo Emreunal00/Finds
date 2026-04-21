@@ -51,3 +51,12 @@ struct Movie: Identifiable, Equatable, Codable {
     }
 }
 
+extension Movie {
+    var normalizedMediaType: String {
+        (mediaType ?? "movie").lowercased()
+    }
+
+    var isBook: Bool {
+        normalizedMediaType == "book"
+    }
+}

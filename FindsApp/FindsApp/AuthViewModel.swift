@@ -302,7 +302,6 @@ final class AuthViewModel: ObservableObject {
 
         if let idx = profile.favoritesEntries.firstIndex(where: { $0.id == movieID && $0.type.lowercased() == type }) {
             do {
-                try await repo.removeFromFavorites(uid: uid, entry: entry)
                 // Update the profile's favoritesEntries
                 updatedUser.profiles = updatedUser.profiles.map { p in
                     guard p.id == profile.id else { return p }
@@ -310,6 +309,7 @@ final class AuthViewModel: ObservableObject {
                     copy.favoritesEntries.remove(at: idx)
                     return copy
                 }
+                try await repo.createOrMerge(updatedUser)
                 self.user = updatedUser
                 self.listsVersion &+= 1
             } catch {
@@ -317,13 +317,13 @@ final class AuthViewModel: ObservableObject {
             }
         } else {
             do {
-                try await repo.addToFavorites(uid: uid, entry: entry)
                 updatedUser.profiles = updatedUser.profiles.map { p in
                     guard p.id == profile.id else { return p }
                     var copy = p
                     copy.favoritesEntries.append(entry)
                     return copy
                 }
+                try await repo.createOrMerge(updatedUser)
                 self.user = updatedUser
                 self.listsVersion &+= 1
             } catch {
@@ -349,13 +349,16 @@ final class AuthViewModel: ObservableObject {
 
         if let idx = profile.watchlistEntries.firstIndex(where: { $0.id == movieID && $0.type.lowercased() == type }) {
             do {
-                try await repo.removeFromWatchlist(uid: uid, entry: entry)
                 updatedUser.profiles = updatedUser.profiles.map { p in
                     guard p.id == profile.id else { return p }
                     var copy = p
                     copy.watchlistEntries.remove(at: idx)
+                    if type == "book" {
+                        copy.booksWantToReadEntries.removeAll { $0.id == movieID && $0.type.lowercased() == type }
+                    }
                     return copy
                 }
+                try await repo.createOrMerge(updatedUser)
                 self.user = updatedUser
                 self.listsVersion &+= 1
             } catch {
@@ -363,13 +366,16 @@ final class AuthViewModel: ObservableObject {
             }
         } else {
             do {
-                try await repo.addToWatchlist(uid: uid, entry: entry)
                 updatedUser.profiles = updatedUser.profiles.map { p in
                     guard p.id == profile.id else { return p }
                     var copy = p
                     copy.watchlistEntries.append(entry)
+                    if type == "book" {
+                        copy.booksWantToReadEntries.append(entry)
+                    }
                     return copy
                 }
+                try await repo.createOrMerge(updatedUser)
                 self.user = updatedUser
                 self.listsVersion &+= 1
             } catch {
@@ -395,13 +401,16 @@ final class AuthViewModel: ObservableObject {
 
         if let idx = profile.watchedEntries.firstIndex(where: { $0.id == movieID && $0.type.lowercased() == normType }) {
             do {
-                try await repo.removeFromWatched(uid: uid, entry: entry)
                 updatedUser.profiles = updatedUser.profiles.map { p in
                     guard p.id == profile.id else { return p }
                     var copy = p
                     copy.watchedEntries.remove(at: idx)
+                    if normType == "book" {
+                        copy.booksReadEntries.removeAll { $0.id == movieID && $0.type.lowercased() == normType }
+                    }
                     return copy
                 }
+                try await repo.createOrMerge(updatedUser)
                 self.user = updatedUser
                 self.listsVersion &+= 1
             } catch {
@@ -409,13 +418,16 @@ final class AuthViewModel: ObservableObject {
             }
         } else {
             do {
-                try await repo.addToWatched(uid: uid, entry: entry)
                 updatedUser.profiles = updatedUser.profiles.map { p in
                     guard p.id == profile.id else { return p }
                     var copy = p
                     copy.watchedEntries.append(entry)
+                    if normType == "book" {
+                        copy.booksReadEntries.append(entry)
+                    }
                     return copy
                 }
+                try await repo.createOrMerge(updatedUser)
                 self.user = updatedUser
                 self.listsVersion &+= 1
             } catch {

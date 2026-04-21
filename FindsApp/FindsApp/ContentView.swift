@@ -76,11 +76,11 @@ struct ContentView: View {
                         }
 
                         Group {
-                            if homeVM.isLoading && homeVM.trending.isEmpty && homeVM.suggestions.isEmpty && homeVM.trendingShows.isEmpty && homeVM.suggestedShows.isEmpty {
+                            if homeVM.isLoading && homeVM.trending.isEmpty && homeVM.suggestions.isEmpty && homeVM.trendingShows.isEmpty && homeVM.suggestedShows.isEmpty && homeVM.trendingBooks.isEmpty && homeVM.suggestedBooks.isEmpty {
                                 CustomLoadingView(message: "Loading…")
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                             } else if let err = homeVM.error,
-                                      homeVM.trending.isEmpty && homeVM.suggestions.isEmpty && homeVM.trendingShows.isEmpty && homeVM.suggestedShows.isEmpty {
+                                      homeVM.trending.isEmpty && homeVM.suggestions.isEmpty && homeVM.trendingShows.isEmpty && homeVM.suggestedShows.isEmpty && homeVM.trendingBooks.isEmpty && homeVM.suggestedBooks.isEmpty {
                                 VStack(spacing: 12) {
                                     Text("Failed to load")
                                         .font(.headline)
@@ -135,6 +135,26 @@ struct ContentView: View {
                                         .buttonStyle(.plain)
                                         PosterHScroll(movies: homeVM.suggestedShows)
                                     }
+
+                                    if !homeVM.trendingBooks.isEmpty {
+                                        NavigationLink {
+                                            MoreListView(kind: .trendingBooks)
+                                        } label: {
+                                            SectionHeader(title: "Popular books", showsChevron: true)
+                                        }
+                                        .buttonStyle(.plain)
+                                        PosterHScroll(movies: homeVM.trendingBooks)
+                                    }
+
+                                    if !homeVM.suggestedBooks.isEmpty {
+                                        NavigationLink {
+                                            MoreListView(kind: .suggestedBooks)
+                                        } label: {
+                                            SectionHeader(title: "Recommended books", showsChevron: true)
+                                        }
+                                        .buttonStyle(.plain)
+                                        PosterHScroll(movies: homeVM.suggestedBooks)
+                                    }
                                 }
                             }
                         }
@@ -146,7 +166,7 @@ struct ContentView: View {
             // Navigation bar’ı bu ekranda gizle: mini başlık görünmez
             .navigationBarHidden(true)
             .task {
-                if homeVM.trending.isEmpty && homeVM.suggestions.isEmpty && homeVM.trendingShows.isEmpty && homeVM.suggestedShows.isEmpty {
+                if homeVM.trending.isEmpty && homeVM.suggestions.isEmpty && homeVM.trendingShows.isEmpty && homeVM.suggestedShows.isEmpty && homeVM.trendingBooks.isEmpty && homeVM.suggestedBooks.isEmpty {
                     await homeVM.load(userID: authVM.user?.id)
                 }
                 // Check onboarding status once per appearance
@@ -210,7 +230,7 @@ private struct PosterHScroll: View {
             HStack(spacing: 12) {
                 ForEach(movies) { movie in
                     NavigationLink {
-                        MovieDetailView(movie: movie)
+                        MediaDetailDestination(item: movie)
                     } label: {
                         VStack(alignment: .leading, spacing: 6) {
                             poster(for: movie)
@@ -268,7 +288,10 @@ private struct PosterHScroll: View {
                 .resizable()
                 .scaledToFill()
         } else {
-            placeholder
+            ZStack {
+                Color(.tertiarySystemFill)
+                placeholderSymbol(for: movie)
+            }
         }
     }
 
@@ -279,6 +302,12 @@ private struct PosterHScroll: View {
                 .font(.system(size: 28))
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private func placeholderSymbol(for movie: Movie) -> some View {
+        Image(systemName: BookCatalog.symbolName(for: movie))
+                .font(.system(size: 28))
+                .foregroundStyle(.secondary)
     }
 }
 

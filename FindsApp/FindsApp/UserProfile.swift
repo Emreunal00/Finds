@@ -14,6 +14,8 @@ struct Profile: Codable, Identifiable, Equatable {
     var watchedEntries: [WatchedEntry]
     var favoritesEntries: [WatchedEntry]
     var watchlistEntries: [WatchedEntry]
+    var booksReadEntries: [WatchedEntry]
+    var booksWantToReadEntries: [WatchedEntry]
     // You may add more profile-specific fields as needed
     
     init(id: String = UUID().uuidString,
@@ -22,7 +24,9 @@ struct Profile: Codable, Identifiable, Equatable {
          createdAt: Date = Date(),
          watchedEntries: [WatchedEntry] = [],
          favoritesEntries: [WatchedEntry] = [],
-         watchlistEntries: [WatchedEntry] = []) {
+         watchlistEntries: [WatchedEntry] = [],
+         booksReadEntries: [WatchedEntry] = [],
+         booksWantToReadEntries: [WatchedEntry] = []) {
         self.id = id
         self.displayName = displayName
         self.photoURL = photoURL
@@ -30,6 +34,8 @@ struct Profile: Codable, Identifiable, Equatable {
         self.watchedEntries = watchedEntries
         self.favoritesEntries = favoritesEntries
         self.watchlistEntries = watchlistEntries
+        self.booksReadEntries = booksReadEntries
+        self.booksWantToReadEntries = booksWantToReadEntries
     }
 }
 
@@ -95,7 +101,9 @@ final class UserProfileRepository {
                 "createdAt": Timestamp(date: prof.createdAt),
                 "watchedEntries": prof.watchedEntries.map { ["id": $0.id, "type": $0.type] },
                 "favoritesEntries": prof.favoritesEntries.map { ["id": $0.id, "type": $0.type] },
-                "watchlistEntries": prof.watchlistEntries.map { ["id": $0.id, "type": $0.type] }
+                "watchlistEntries": prof.watchlistEntries.map { ["id": $0.id, "type": $0.type] },
+                "booksReadEntries": prof.booksReadEntries.map { ["id": $0.id, "type": $0.type] },
+                "booksWantToReadEntries": prof.booksWantToReadEntries.map { ["id": $0.id, "type": $0.type] }
             ]
         }
 
@@ -185,6 +193,14 @@ final class UserProfileRepository {
                 let watchedEntries = entries(from: pDict["watchedEntries"])
                 let favoritesEntries = entries(from: pDict["favoritesEntries"])
                 let watchlistEntries = entries(from: pDict["watchlistEntries"])
+                let booksReadEntriesRaw = entries(from: pDict["booksReadEntries"])
+                let booksWantToReadEntriesRaw = entries(from: pDict["booksWantToReadEntries"])
+                let booksReadEntries = booksReadEntriesRaw.isEmpty
+                    ? watchedEntries.filter { $0.type.lowercased() == "book" }
+                    : booksReadEntriesRaw
+                let booksWantToReadEntries = booksWantToReadEntriesRaw.isEmpty
+                    ? watchlistEntries.filter { $0.type.lowercased() == "book" }
+                    : booksWantToReadEntriesRaw
 
                 return Profile(
                     id: id,
@@ -193,7 +209,9 @@ final class UserProfileRepository {
                     createdAt: createdAtDate,
                     watchedEntries: watchedEntries,
                     favoritesEntries: favoritesEntries,
-                    watchlistEntries: watchlistEntries
+                    watchlistEntries: watchlistEntries,
+                    booksReadEntries: booksReadEntries,
+                    booksWantToReadEntries: booksWantToReadEntries
                 )
             }
         } else {
@@ -261,7 +279,9 @@ final class UserProfileRepository {
                 createdAt: createdAtDate,
                 watchedEntries: watchedEntries,
                 favoritesEntries: favoritesEntries,
-                watchlistEntries: watchlistEntries
+                watchlistEntries: watchlistEntries,
+                booksReadEntries: watchedEntries.filter { $0.type.lowercased() == "book" },
+                booksWantToReadEntries: watchlistEntries.filter { $0.type.lowercased() == "book" }
             )
             profiles = [singleProfile]
         }

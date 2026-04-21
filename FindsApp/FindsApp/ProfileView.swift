@@ -63,6 +63,8 @@ struct ProfileView: View {
         case favorites = "Favorites"
         case watchlist = "Watchlist"
         case watched = "Watched"
+        case wantToReadBooks = "Want to Read"
+        case readBooks = "Read Books"
         case custom = "My Lists"
 
         var id: String { rawValue }
@@ -71,6 +73,8 @@ struct ProfileView: View {
             case .favorites: return "heart.fill"
             case .watchlist: return "bookmark.fill"
             case .watched: return "checkmark.circle.fill"
+            case .wantToReadBooks: return "book.pages.fill"
+            case .readBooks: return "book.fill"
             case .custom: return "list.bullet"
             }
         }
@@ -79,6 +83,8 @@ struct ProfileView: View {
             case .favorites: return .pink
             case .watchlist: return .blue
             case .watched: return .green
+            case .wantToReadBooks: return .blue
+            case .readBooks: return .green
             case .custom: return .purple
             }
         }
@@ -87,6 +93,8 @@ struct ProfileView: View {
             case .favorites: return "No favorites"
             case .watchlist: return "Watchlist is empty"
             case .watched: return "No watched items"
+            case .wantToReadBooks: return "No books in want to read"
+            case .readBooks: return "No read books"
             case .custom: return "No custom lists"
             }
         }
@@ -95,6 +103,8 @@ struct ProfileView: View {
             case .favorites: return "Use the heart icon to add items to your favorites."
             case .watchlist: return "Use the bookmark icon to save items to your watchlist."
             case .watched: return "Use the checkmark to mark items as watched."
+            case .wantToReadBooks: return "Books you want to read will appear here."
+            case .readBooks: return "Books you marked as read will appear here."
             case .custom: return "Create and manage your own collections."
             }
         }
@@ -105,15 +115,9 @@ struct ProfileView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
                     headerSection
-                    Picker("", selection: $selectedTab) {
-                        ForEach(ListTab.allCases) { tab in
-                            Text(tab.rawValue).tag(tab)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal)
-                    .padding(.top, 4)
-                    .onChange(of: selectedTab) { _ in
+                    tabBarSection
+                        .padding(.top, 4)
+                        .onChange(of: selectedTab) { _ in
                         showingNewListPrompt = false
                         newListName = ""
                         Task { await loadCurrentList(limitToFive: true) }
@@ -177,6 +181,8 @@ struct ProfileView: View {
                     WatchlistListView().environmentObject(authVM)
                 case .watched:
                     WatchedListView().environmentObject(authVM)
+                case .wantToReadBooks, .readBooks:
+                    EmptyView()
                 case .custom:
                     VStack { Text("Custom Lists") }
                 }
@@ -355,9 +361,23 @@ struct ProfileView: View {
                         }
 
                         HStack {
+                            Label("Want to Read", systemImage: "book.pages.fill").foregroundStyle(.blue)
+                            Spacer()
+                            Text("\(profile.watchlistEntries.filter { $0.type.lowercased() == "book" }.count)")
+                                .foregroundStyle(.secondary)
+                        }
+
+                        HStack {
                             Label("Watched", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                             Spacer()
                             Text("\(profile.watchedEntries.count)")
+                                .foregroundStyle(.secondary)
+                        }
+
+                        HStack {
+                            Label("Read", systemImage: "book.fill").foregroundStyle(.green)
+                            Spacer()
+                            Text("\(profile.watchedEntries.filter { $0.type.lowercased() == "book" }.count)")
                                 .foregroundStyle(.secondary)
                         }
 
@@ -415,6 +435,34 @@ struct ProfileView: View {
         .padding(.top, 8)
     }
 
+    private var tabBarSection: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(ListTab.allCases) { tab in
+                    Button {
+                        selectedTab = tab
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: tab.icon)
+                                .imageScale(.small)
+                            Text(tab.rawValue)
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .foregroundStyle(selectedTab == tab ? Color.white : tab.tint)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(selectedTab == tab ? tab.tint : Color(.secondarySystemBackground))
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal)
+        }
+    }
+
     @ViewBuilder
     private var contentSection: some View {
         if isLoading {
@@ -440,7 +488,7 @@ struct ProfileView: View {
             } else {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(movies) { movie in
-                        NavigationLink { MovieDetailView(movie: movie) } label: { row(for: movie) }
+                        NavigationLink { MediaDetailDestination(item: movie) } label: { row(for: movie) }
                             .buttonStyle(.plain)
                             .onAppear { ratingsCache.loadIfNeeded(for: movie) }
                         Divider()
@@ -767,6 +815,34 @@ struct ProfileView: View {
         return authVM.currentProfile?.watchedEntries ?? []
     }
 
+    private func currentWantToReadEntries() -> [WatchedEntry] {
+        currentWatchlistEntries().filter { $0.type.lowercased() == "book" }
+    }
+
+    private func currentReadBookEntries() -> [WatchedEntry] {
+        currentWatchedEntries().filter { $0.type.lowercased() == "book" }
+    }
+
+    private func fetchMediaItems(from entries: [WatchedEntry]) async -> [Movie] {
+        await withTaskGroup(of: (Int, Movie?).self) { group -> [Movie] in
+            for entry in entries {
+                group.addTask {
+                    do {
+                        let media = try await BookCatalog.fetchMedia(id: entry.id, type: entry.type, service: service)
+                        return (entry.id, media)
+                    } catch {
+                        return (entry.id, nil)
+                    }
+                }
+            }
+            var items: [(Int, Movie?)] = []
+            while let next = await group.next() { items.append(next) }
+            let map = Dictionary(uniqueKeysWithValues: items)
+            let orderedMovies = entries.compactMap { map[$0.id] ?? nil }
+            return orderedMovies.compactMap { $0 }
+        }
+    }
+
     // MARK: - Firestore Custom Lists
 
     private func startCustomListsListener(userId: String, profileId: String) {
@@ -895,93 +971,31 @@ struct ProfileView: View {
             guard !entries.isEmpty else { movies = []; return }
             let ordered = Array(entries.reversed())
             let limited = limitToFive ? Array(ordered.prefix(5)) : ordered
-            do {
-                let fetched: [Movie] = await withTaskGroup(of: (Int, Movie?).self) { group -> [Movie] in
-                    for entry in limited {
-                        group.addTask {
-                            do {
-                                if entry.type.lowercased() == "movie" {
-                                    let m = try await service.fetchMovieBasic(id: entry.id)
-                                    return (entry.id, m)
-                                } else {
-                                    let tv = try await service.fetchTVBasic(id: entry.id)
-                                    return (entry.id, tv)
-                                }
-                            } catch {
-                                return (entry.id, nil)
-                            }
-                        }
-                    }
-                    var items: [(Int, Movie?)] = []
-                    while let next = await group.next() { items.append(next) }
-                    let map = Dictionary(uniqueKeysWithValues: items)
-                    let orderedMovies = limited.compactMap { map[$0.id] ?? nil }
-                    return orderedMovies.compactMap { $0 }
-                }
-                movies = fetched
-            }
+            movies = await fetchMediaItems(from: limited)
 
         case .watchlist:
             let entries = currentWatchlistEntries()
             guard !entries.isEmpty else { movies = []; return }
             let ordered = Array(entries.reversed())
             let limited = limitToFive ? Array(ordered.prefix(5)) : ordered
-            do {
-                let fetched: [Movie] = await withTaskGroup(of: (Int, Movie?).self) { group -> [Movie] in
-                    for entry in limited {
-                        group.addTask {
-                            do {
-                                if entry.type.lowercased() == "movie" {
-                                    let m = try await service.fetchMovieBasic(id: entry.id)
-                                    return (entry.id, m)
-                                } else {
-                                    let tv = try await service.fetchTVBasic(id: entry.id)
-                                    return (entry.id, tv)
-                                }
-                            } catch {
-                                return (entry.id, nil)
-                            }
-                        }
-                    }
-                    var items: [(Int, Movie?)] = []
-                    while let next = await group.next() { items.append(next) }
-                    let map = Dictionary(uniqueKeysWithValues: items)
-                    let orderedMovies = limited.compactMap { map[$0.id] ?? nil }
-                    return orderedMovies.compactMap { $0 }
-                }
-                movies = fetched
-            }
+            movies = await fetchMediaItems(from: limited)
 
         case .watched:
             let entries = currentWatchedEntries()
             guard !entries.isEmpty else { movies = []; return }
             let ordered = Array(entries.reversed())
             let limited = limitToFive ? Array(ordered.prefix(5)) : ordered
-            do {
-                let fetched: [Movie] = await withTaskGroup(of: (Int, Movie?).self) { group -> [Movie] in
-                    for entry in limited {
-                        group.addTask {
-                            do {
-                                if entry.type.lowercased() == "movie" {
-                                    let m = try await service.fetchMovieBasic(id: entry.id)
-                                    return (entry.id, m)
-                                } else {
-                                    let tv = try await service.fetchTVBasic(id: entry.id)
-                                    return (entry.id, tv)
-                                }
-                            } catch {
-                                return (entry.id, nil)
-                            }
-                        }
-                    }
-                    var items: [(Int, Movie?)] = []
-                    while let next = await group.next() { items.append(next) }
-                    let map = Dictionary(uniqueKeysWithValues: items)
-                    let orderedMovies = limited.compactMap { map[$0.id] ?? nil }
-                    return orderedMovies.compactMap { $0 }
-                }
-                movies = fetched
-            }
+            movies = await fetchMediaItems(from: limited)
+        case .wantToReadBooks:
+            let entries = Array(currentWantToReadEntries().reversed())
+            let limited = limitToFive ? Array(entries.prefix(5)) : entries
+            guard !limited.isEmpty else { movies = []; return }
+            movies = await fetchMediaItems(from: limited)
+        case .readBooks:
+            let entries = Array(currentReadBookEntries().reversed())
+            let limited = limitToFive ? Array(entries.prefix(5)) : entries
+            guard !limited.isEmpty else { movies = []; return }
+            movies = await fetchMediaItems(from: limited)
         case .custom:
             movies = []
             return
@@ -998,6 +1012,8 @@ struct ProfileView: View {
             return profile.watchlistEntries.count > 5
         case .watched:
             return profile.watchedEntries.count > 5
+        case .wantToReadBooks, .readBooks:
+            return false
         case .custom:
             return false
         }
@@ -1013,6 +1029,10 @@ struct ProfileView: View {
         case .watched:
             let type = mediaType ?? "movie"
             await authVM.toggleWatched(movieID: movieID, type: type)
+        case .wantToReadBooks:
+            await authVM.toggleWatchlist(movieID: movieID, mediaType: mediaType ?? "book")
+        case .readBooks:
+            await authVM.toggleWatched(movieID: movieID, type: mediaType ?? "book")
         case .custom:
             break
         }
