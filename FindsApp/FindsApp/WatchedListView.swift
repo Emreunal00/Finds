@@ -50,7 +50,7 @@ struct WatchedListView: View {
     @State private var errorMessage: String?
     @State private var sort: SortOption = .addedNewestFirst
 
-    // Orijinal entries sırası (eklenme sırası için)
+    // Original entries order (for added order)
     @State private var originalEntries: [WatchedEntry] = []
     @StateObject private var ratingsCache = WatchedRatingsCache.shared
 
@@ -59,12 +59,14 @@ struct WatchedListView: View {
 
     private let service: MovieServicing = MovieService()
 
+    // Updated to use currentProfile instead of user for watchedEntries
     private var entriesRaw: [WatchedEntry] {
-        guard let u = authVM.user else { return [] }
-        if !u.watchedEntries.isEmpty {
-            return u.watchedEntries
+        guard let profile = authVM.currentProfile else { return [] }
+        if !profile.watchedEntries.isEmpty {
+            return profile.watchedEntries
         } else {
-            return u.watchedIDs.map { WatchedEntry(id: $0, type: "movie") }
+            // Legacy fallback: deprecated, kept for migration only
+            return authVM.user?.watchedIDs.map { WatchedEntry(id: $0, type: "movie") } ?? []
         }
     }
 
@@ -125,7 +127,10 @@ struct WatchedListView: View {
             }
         }
         .task { await loadAll() }
+        // Reload when listsVersion changes
         .onChange(of: authVM.listsVersion) { _ in Task { await loadAll() } }
+        // Reload when currentProfile changes
+        .onChange(of: authVM.currentProfile) { _ in Task { await loadAll() } }
         .overlay {
             if showingDeletionConfirm, let movie = pendingDeletionMovie {
                 ZStack {

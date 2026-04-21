@@ -4,19 +4,27 @@ import FirebaseAuth
 struct EditProfileView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authVM: AuthViewModel
-
-    @AppStorage("themePreference") private var themePreferenceRaw: String = ThemePreference.system.rawValue
+    @EnvironmentObject var themeStore: ThemeStore
 
     @State private var displayName: String = ""
     @State private var selectedAvatarID: String?
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var showingSignOutConfirm = false
+    @State private var showingDeleteProfileConfirm = false
 
     private let availableAvatars: [String] = (1...15).map { "avatar\($0)" }
 
-    private var themePreference: ThemePreference {
-        ThemePreference(rawValue: themePreferenceRaw) ?? .system
+    private var canDeleteCurrentProfile: Bool {
+        guard let user = authVM.user else { return false }
+        return user.profiles.count > 1 && authVM.currentProfile != nil
+    }
+
+    private var deleteProfileHelpText: String {
+        guard let user = authVM.user else { return "No signed-in user found." }
+        guard authVM.currentProfile != nil else { return "No active profile selected." }
+        if user.profiles.count <= 1 { return "At least one profile must remain on the account." }
+        return "This profile will be removed from the current account."
     }
 
     var body: some View {
@@ -36,14 +44,7 @@ struct EditProfileView: View {
                                     Button {
                                         selectedAvatarID = id
                                     } label: {
-                                        Image(id)
-                                            .resizable()
-                                            .scaledToFill()
-                                            .frame(width: 56, height: 56)
-                                            .clipShape(Circle())
-                                            .overlay(
-                                                Circle().stroke(selectedAvatarID == id ? Color.accentColor : .clear, lineWidth: 3)
-                                            )
+                                        avatarOption(id: id)
                                     }
                                     .buttonStyle(.plain)
                                     .accessibilityLabel(Text("Select avatar \(id)"))
@@ -60,11 +61,12 @@ struct EditProfileView: View {
                 }
 
                 Section(header: Text("Theme")) {
-                    Picker("Appearance", selection: $themePreferenceRaw) {
+                    Picker("Appearance", selection: $themeStore.preference) {
                         ForEach(ThemePreference.allCases) { opt in
-                            Text(opt.displayName).tag(opt.rawValue)
+                            Text(opt.displayName).tag(opt)
                         }
                     }
+                    .pickerStyle(.segmented)
                 }
 
                 if let err = errorMessage {
@@ -74,13 +76,26 @@ struct EditProfileView: View {
                             .font(.footnote)
                     }
                 }
+
+                Section("Profile Actions") {
+                    Button(role: .destructive) {
+                        handleDeleteTap()
+                    } label: {
+                        Label("Delete Profile", systemImage: "trash")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    Text(deleteProfileHelpText)
+                        .font(.footnote)
+                        .foregroundColor(canDeleteCurrentProfile ? .secondary : .orange)
+                }
                 
-                Section {
+                Section("Account") {
                     Button(role: .destructive) {
                         showingSignOutConfirm = true
                     } label: {
                         Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                            .frame(maxWidth: .infinity, alignment: .center)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .foregroundColor(.red)
                     }
                 }
@@ -100,8 +115,45 @@ struct EditProfileView: View {
                 }
             }
             .onAppear {
-                displayName = authVM.user?.displayName ?? (Auth.auth().currentUser?.displayName ?? "")
-                if let urlStr = authVM.user?.photoURL, urlStr.hasPrefix("avatar://") { selectedAvatarID = String(urlStr.dropFirst("avatar://".count)) }
+                displayName = authVM.currentProfile?.displayName ?? (Auth.auth().currentUser?.displayName ?? "")
+                if let urlStr = authVM.currentProfile?.photoURL, urlStr.hasPrefix("avatar://") { selectedAvatarID = String(urlStr.dropFirst("avatar://".count)) }
+            }
+            .preferredColorScheme(themeStore.preference.colorScheme)
+            .overlay {
+                if showingDeleteProfileConfirm {
+                    ZStack {
+                        Color.black.opacity(0.4)
+                            .ignoresSafeArea()
+                        VStack(spacing: 16) {
+                            Text("Delete Profile?")
+                                .font(.headline)
+                            Text("This removes the current profile and its profile-specific lists from this account.")
+                                .multilineTextAlignment(.center)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            HStack {
+                                Button("Cancel") {
+                                    showingDeleteProfileConfirm = false
+                                }
+                                .buttonStyle(.bordered)
+                                Spacer()
+                                Button("Delete") {
+                                    showingDeleteProfileConfirm = false
+                                    Task { await deleteCurrentProfile() }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.red)
+                            }
+                        }
+                        .padding(24)
+                        .frame(maxWidth: 320)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(Color(.systemBackground))
+                        )
+                        .padding(.horizontal, 40)
+                    }
+                }
             }
             .overlay {
                 if showingSignOutConfirm {
@@ -150,7 +202,7 @@ struct EditProfileView: View {
                 .resizable().scaledToFill()
                 .frame(width: 64, height: 64)
                 .clipShape(Circle())
-        } else if let urlStr = authVM.user?.photoURL {
+        } else if let urlStr = authVM.currentProfile?.photoURL {
             if urlStr.hasPrefix("avatar://") {
                 let id = String(urlStr.dropFirst("avatar://".count))
                 Image(id)
@@ -174,6 +226,20 @@ struct EditProfileView: View {
         }
     }
 
+    private func avatarOption(id: String) -> some View {
+        let strokeColor: Color = selectedAvatarID == id ? .accentColor : .clear
+
+        return Image(id)
+            .resizable()
+            .scaledToFill()
+            .frame(width: 56, height: 56)
+            .clipShape(Circle())
+            .overlay {
+                Circle()
+                    .stroke(strokeColor, lineWidth: 3)
+            }
+    }
+
     private var placeholder: some View {
         Circle()
             .fill(Color(.tertiarySystemFill))
@@ -189,20 +255,41 @@ struct EditProfileView: View {
         errorMessage = nil
         defer { isSaving = false }
 
+        if let id = selectedAvatarID {
+            let urlStr = "avatar://" + id
+            await authVM.updatePhotoURL(urlStr)
+        }
+
+        let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty, trimmed != (authVM.currentProfile?.displayName ?? "") {
+            await authVM.updateDisplayName(trimmed)
+        }
+
+        dismiss()
+    }
+
+    private func deleteCurrentProfile() async {
+        guard let profileID = authVM.currentProfile?.id, canDeleteCurrentProfile else { return }
+        debugPrint("[EditProfile] deleteCurrentProfile tapped profileID=\(profileID)")
         do {
-            if let id = selectedAvatarID {
-                let urlStr = "avatar://" + id
-                await authVM.updatePhotoURL(urlStr)
-            }
-
-            let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty, trimmed != (authVM.user?.displayName ?? "") {
-                await authVM.updateDisplayName(trimmed)
-            }
-
+            try await authVM.deleteProfile(profileID)
+            debugPrint("[EditProfile] deleteCurrentProfile success profileID=\(profileID)")
             dismiss()
         } catch {
+            debugPrint("[EditProfile] deleteCurrentProfile failed profileID=\(profileID) error=\(error.localizedDescription)")
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func handleDeleteTap() {
+        guard canDeleteCurrentProfile else {
+            errorMessage = deleteProfileHelpText
+            debugPrint("[EditProfile] deleteCurrentProfile blocked reason=\(deleteProfileHelpText)")
+            return
+        }
+
+        errorMessage = nil
+        showingDeleteProfileConfirm = true
+        debugPrint("[EditProfile] deleteCurrentProfile confirm requested")
     }
 }

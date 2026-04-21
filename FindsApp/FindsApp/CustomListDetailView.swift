@@ -106,6 +106,20 @@ struct CustomListDetailView: View {
             }
         }
         .task { await loadItems() }
+        // Reload list when the current profile changes
+        .onChange(of: authVM.currentProfile) { _ in
+            // Clear current data and reload for new profile
+            movies = []
+            originalOrderIDs = []
+            Task { await loadItems() }
+        }
+        // Clear data when user signs out (user id changes)
+        .onChange(of: authVM.user?.id) { newUserId in
+            if newUserId == nil {
+                movies = []
+                originalOrderIDs = []
+            }
+        }
     }
 
     private func row(for movie: Movie) -> some View {
@@ -187,15 +201,27 @@ struct CustomListDetailView: View {
         isLoading = true
         defer { isLoading = false }
 
-        guard let uid = authVM.user?.id else {
+        // Require both userId and profileId for profile-specific data
+        guard let userId = authVM.user?.id else {
             errorMessage = "Not signed in"
             movies = []
+            originalOrderIDs = []
+            return
+        }
+        guard let profileId = authVM.currentProfile?.id else {
+            errorMessage = "No profile selected"
+            movies = []
+            originalOrderIDs = []
             return
         }
 
         do {
             let db = Firestore.firestore()
-            let itemsRef = db.collection("users").document(uid)
+
+            // New Firestore path for profile-specific custom list items:
+            // users/{userId}/profiles/{profileId}/lists/{listId}/items
+            let itemsRef = db.collection("users").document(userId)
+                .collection("profiles").document(profileId)
                 .collection("lists").document(list.id)
                 .collection("items")
                 .order(by: "addedAt", descending: true)
@@ -235,6 +261,7 @@ struct CustomListDetailView: View {
         } catch {
             errorMessage = error.localizedDescription
             movies = []
+            originalOrderIDs = []
         }
     }
 }

@@ -48,6 +48,9 @@ struct PickerView: View {
     @State private var listsListener: ListenerRegistration? = nil
     @State private var listPendingDeletion: CustomUserList? = nil
 
+    // Track current profileId for custom lists usage
+    @State private var currentProfileId: String? = nil
+
     private var isInAnyCustomListForCurrent: Bool {
         !selectedLists.isEmpty
     }
@@ -129,119 +132,187 @@ struct PickerView: View {
 
     @ViewBuilder
     private func contentForMovie(_ movie: Movie) -> some View {
-        PosterCard(movie: movie,
-                   dragOffset: $dragOffset,
-                   onSwipeLeft: { swiped in
-                       withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                           if !movies.isEmpty {
-                               _ = movies.remove(at: currentIndex)
-                               currentIndex = min(currentIndex, max(movies.count - 1, 0))
-                           }
-                       }
-                       Task { await saveSwipeDecision(for: swiped, decision: .not_recommend) }
-                   },
-                   onSwipeRight: { swiped in
-                       withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                           if !movies.isEmpty {
-                               _ = movies.remove(at: currentIndex)
-                               currentIndex = min(currentIndex, max(movies.count - 1, 0))
-                           }
-                       }
-                       Task { await saveSwipeDecision(for: swiped, decision: .recommend) }
-                   })
-            .id(movie.id)
-            .transition(cardTransition)
-            .animation(.spring(response: 0.40, dampingFraction: 0.85), value: movie.id)
-
-        NavigationLink { MovieDetailView(movie: movie) } label: {
-            Text(movie.title)
-                .font(.title2).bold()
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
-                .padding(.top, 8)
-                .padding(.horizontal, 16)
-        }
-        .buttonStyle(.plain)
-
-        actionButtons(for: movie)
-            .font(.subheadline)
-            .padding(.horizontal, 8)
-
-        if !movie.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            Text(movie.summary)
-                .font(.body)
-                .foregroundStyle(.primary)
-                .padding(.top, 8)
-                .padding(.horizontal, 16)
-        }
+        MovieContentView(movie: movie, dragOffset: $dragOffset, movies: $movies, currentIndex: $currentIndex, saveSwipeDecision: saveSwipeDecision, actionButtons: { m in actionButtons(for: m) })
     }
 
     @ViewBuilder
     private func actionButtons(for movie: Movie) -> some View {
-        let columns = [GridItem(.flexible(minimum: 120), spacing: 12), GridItem(.flexible(minimum: 120), spacing: 12)]
-        LazyVGrid(columns: columns, alignment: .center, spacing: 12) {
+        ActionButtonsView(
+            movie: movie,
+            isWatched: isWatched(movie),
+            isInWatchlist: isInWatchlist(movie),
+            isFavorite: isFavorite(movie),
+            isInAnyCustomListForCurrent: isInAnyCustomListForCurrent,
+            userPreviousRating: userPreviousRating,
+            localWatched: $localWatched,
+            localWatchlist: $localWatchlist,
+            localFavorites: $localFavorites,
+            currentProfileId: currentProfileId,
+            movies: $movies,
+            currentIndex: $currentIndex,
+            isShowingListsSheet: $isShowingListsSheet,
+            isShowingRatingSheet: $isShowingRatingSheet,
+            tempRating: $tempRating
+        )
+    }
+
+    private struct MovieContentView: View {
+        let movie: Movie
+        @Binding var dragOffset: CGFloat
+        @Binding var movies: [Movie]
+        @Binding var currentIndex: Int
+        let saveSwipeDecision: (Movie, PickerView.SwipeDecision) async -> Void
+        let actionButtons: (Movie) -> AnyView
+
+        init(movie: Movie, dragOffset: Binding<CGFloat>, movies: Binding<[Movie]>, currentIndex: Binding<Int>, saveSwipeDecision: @escaping (Movie, PickerView.SwipeDecision) async -> Void, actionButtons: @escaping (Movie) -> some View) {
+            self.movie = movie
+            self._dragOffset = dragOffset
+            self._movies = movies
+            self._currentIndex = currentIndex
+            self.saveSwipeDecision = saveSwipeDecision
+            self.actionButtons = { m in AnyView(actionButtons(m)) }
+        }
+
+        var body: some View {
+            PosterCard(movie: movie,
+                       dragOffset: $dragOffset,
+                       onSwipeLeft: { swiped in
+                           withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                               if !movies.isEmpty {
+                                   _ = movies.remove(at: currentIndex)
+                                   currentIndex = min(currentIndex, max(movies.count - 1, 0))
+                               }
+                           }
+                           Task { await saveSwipeDecision(swiped, .not_recommend) }
+                       },
+                       onSwipeRight: { swiped in
+                           withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                               if !movies.isEmpty {
+                                   _ = movies.remove(at: currentIndex)
+                                   currentIndex = min(currentIndex, max(movies.count - 1, 0))
+                               }
+                           }
+                           Task { await saveSwipeDecision(swiped, .recommend) }
+                       })
+                .id(movie.id)
+                .transition(cardTransition)
+                .animation(.spring(response: 0.40, dampingFraction: 0.85), value: movie.id)
+
+            NavigationLink { MovieDetailView(movie: movie) } label: {
+                Text(movie.title)
+                    .font(.title2).bold()
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 8)
+                    .padding(.horizontal, 16)
+            }
+            .buttonStyle(.plain)
+
+            actionButtons(movie)
+
+            if !movie.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(movie.summary)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                    .padding(.top, 8)
+                    .padding(.horizontal, 16)
+            }
+        }
+    }
+
+    private struct ActionButtonsView: View {
+        let movie: Movie
+        let isWatched: Bool
+        let isInWatchlist: Bool
+        let isFavorite: Bool
+        let isInAnyCustomListForCurrent: Bool
+        let userPreviousRating: Double?
+        @Binding var localWatched: Set<String>
+        @Binding var localWatchlist: Set<String>
+        @Binding var localFavorites: Set<String>
+        @EnvironmentObject var authVM: AuthViewModel
+        let currentProfileId: String?
+        @Binding var movies: [Movie]
+        @Binding var currentIndex: Int
+        @Binding var isShowingListsSheet: Bool
+        @Binding var isShowingRatingSheet: Bool
+        @Binding var tempRating: Double
+
+        private func watchedButton() -> some View {
             Button {
                 let type = (movie.mediaType ?? "movie").lowercased()
                 let key = "\(type):\(movie.id)"
                 if localWatched.contains(key) { localWatched.remove(key) } else { localWatched.insert(key) }
                 Task { await authVM.toggleWatched(movieID: movie.id, type: type) }
             } label: {
-                Label(isWatched(movie) ? "Watched" : "Watched", systemImage: isWatched(movie) ? "checkmark.circle.fill" : "checkmark.circle")
+                Label(isWatched ? "Watched" : "Watched", systemImage: isWatched ? "checkmark.circle.fill" : "checkmark.circle")
                     .labelStyle(.titleAndIcon)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .tint(isWatched(movie) ? .green : .secondary)
+            .tint(isWatched ? .green : .secondary)
             .disabled(authVM.user == nil)
+        }
 
+        private func watchlistButton() -> some View {
             Button {
                 let type = (movie.mediaType ?? "movie").lowercased()
                 let key = "\(type):\(movie.id)"
                 if localWatchlist.contains(key) { localWatchlist.remove(key) } else { localWatchlist.insert(key) }
                 Task { await authVM.toggleWatchlist(movieID: movie.id, mediaType: type) }
             } label: {
-                Label(isInWatchlist(movie) ? "Watchlist" : "Watchlist", systemImage: isInWatchlist(movie) ? "bookmark.fill" : "bookmark")
+                Label(isInWatchlist ? "Watchlist" : "Watchlist", systemImage: isInWatchlist ? "bookmark.fill" : "bookmark")
                     .labelStyle(.titleAndIcon)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .tint(isInWatchlist(movie) ? .blue : .secondary)
+            .tint(isInWatchlist ? .blue : .secondary)
             .disabled(authVM.user == nil)
+        }
 
+        private func favoriteButton() -> some View {
             Button {
                 let type = (movie.mediaType ?? "movie").lowercased()
                 let key = "\(type):\(movie.id)"
                 if localFavorites.contains(key) { localFavorites.remove(key) } else { localFavorites.insert(key) }
                 Task { await authVM.toggleFavorite(movieID: movie.id, mediaType: type) }
             } label: {
-                Label(isFavorite(movie) ? "Favorite" : "Favorite", systemImage: isFavorite(movie) ? "heart.fill" : "heart")
+                Label(isFavorite ? "Favorite" : "Favorite", systemImage: isFavorite ? "heart.fill" : "heart")
                     .labelStyle(.titleAndIcon)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .tint(isFavorite(movie) ? .pink : .secondary)
+            .tint(isFavorite ? .pink : .secondary)
             .disabled(authVM.user == nil)
+        }
 
+        private func listsButton() -> some View {
             Button {
                 isShowingListsSheet = true
-                if let movie = movies[safe: currentIndex], let uid = authVM.user?.id { startListsListener(uid: uid, movie: movie) }
+                if let _ = authVM.user?.id, let _ = currentProfileId {
+                    let type = (movie.mediaType ?? "movie").lowercased()
+                    _ = type
+                } else {
+                    selectedListsReset()
+                }
             } label: {
-                Label(isInAnyCustomListForCurrent ? "In Lists" : "Add to List",
-                      systemImage: isInAnyCustomListForCurrent ? "text.badge.checkmark" : "text.badge.plus")
+                Label(isInAnyCustomListForCurrent ? "In Lists" : "Add to List", systemImage: isInAnyCustomListForCurrent ? "text.badge.checkmark" : "text.badge.plus")
                     .labelStyle(.titleAndIcon)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
             .tint(isInAnyCustomListForCurrent ? .purple : .secondary)
             .disabled(authVM.user == nil || movies[safe: currentIndex] == nil)
+        }
 
+        private func ratingButton() -> some View {
             Button {
-                if let _ = movies[safe: currentIndex] {
+                if movies[safe: currentIndex] != nil {
                     tempRating = userPreviousRating ?? tempRating
                     isShowingRatingSheet = true
                 }
             } label: {
-                if let _ = userPreviousRating {
+                if userPreviousRating != nil {
                     Label(String(format: "Rated"), systemImage: "star.fill")
                         .labelStyle(.titleAndIcon)
                         .frame(maxWidth: .infinity)
@@ -255,6 +326,25 @@ struct PickerView: View {
             .tint(userPreviousRating != nil ? .yellow : .secondary)
             .disabled(authVM.user == nil || movies[safe: currentIndex] == nil)
         }
+
+        var body: some View {
+            let columns: [GridItem] = [
+                GridItem(.flexible(minimum: 120), spacing: 12),
+                GridItem(.flexible(minimum: 120), spacing: 12)
+            ]
+            LazyVGrid(columns: columns, alignment: .center, spacing: 12) {
+                watchedButton()
+                watchlistButton()
+                favoriteButton()
+                listsButton()
+                ratingButton()
+            }
+        }
+
+        private func selectedListsReset() {
+            // This method is intentionally left as a placeholder to match previous behavior
+            // Actual reset happens in the parent when missing profile info.
+        }
     }
 
     private struct PosterCard: View {
@@ -264,7 +354,9 @@ struct PickerView: View {
         var onSwipeRight: (Movie) -> Void
 
         var body: some View {
-            ZStack {
+            let rotation: Angle = .degrees(Double(dragOffset) / 20)
+            let scale: CGFloat = 1 - min(abs(dragOffset) / 1200, 0.08)
+            return ZStack {
                 AsyncImage(url: movie.posterURL) { phase in
                     switch phase {
                     case .empty: CustomLoadingView()
@@ -297,292 +389,379 @@ struct PickerView: View {
                     }
             )
             .animation(.interactiveSpring(), value: dragOffset)
-            .transition(.asymmetric(insertion: .scale.combined(with: .opacity), removal: .opacity))
+            .transition(cardTransition)
             .offset(x: dragOffset)
-            .rotationEffect(.degrees(Double(dragOffset) / 20))
-            .scaleEffect(1 - min(abs(dragOffset) / 1200, 0.08))
+            .rotationEffect(rotation)
+            .scaleEffect(scale)
+        }
+    }
+
+    private struct KindSegmentedPicker: View {
+        @Binding var kind: PickerView.ContentKind
+        var body: some View {
+            Picker("Kind", selection: $kind) {
+                ForEach(PickerView.ContentKind.allCases) { k in
+                    Text(k.rawValue).tag(k)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 220)
+            .id("KindSegmentedPickerID")
+        }
+    }
+
+    private var principalToolbar: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            KindSegmentedPicker(kind: $kind)
+        }
+    }
+
+    private var swipeGlowBackground: some View {
+        ZStack {
+            let dragRatio = min(abs(dragOffset) / 120, 1.0)
+            let baseOpacity = max(0, Double(dragRatio))
+            let leftOpacity = baseOpacity * (dragOffset < 0 ? 1 : 0)
+            let rightOpacity = baseOpacity * (dragOffset > 0 ? 1 : 0)
+
+            LinearGradient(
+                colors: [Color.red.opacity(0.45), .clear],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .opacity(leftOpacity)
+            .ignoresSafeArea()
+
+            LinearGradient(
+                colors: [Color.clear, Color.green.opacity(0.45)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .opacity(rightOpacity)
+            .ignoresSafeArea()
+        }
+    }
+
+    private struct ListsSheetView: View {
+        @EnvironmentObject var authVM: AuthViewModel
+        @Binding var currentProfileId: String?
+        @Binding var userLists: [CustomUserList]
+        @Binding var selectedLists: Set<String>
+        @Binding var newListName: String
+        @Binding var listPendingDeletion: CustomUserList?
+        @Binding var isShowingListsSheet: Bool
+        let currentMovie: Movie?
+
+        let startListsListener: (String, String, Movie) -> Void
+        let loadSelections: (String, String, Movie) async -> Void
+        let addNewList: (String, String, String) async -> Void
+        let saveSelections: (String, String, Movie) async -> Void
+        let deleteList: (String, String, String) async -> Void
+
+        private struct ListRowView: View {
+            let list: CustomUserList
+            let isSelected: Bool
+            let onToggle: () -> Void
+            let onDelete: () -> Void
+            var body: some View {
+                HStack(spacing: 12) {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(isSelected ? Color.green : Color.secondary)
+                        .imageScale(.large)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(list.name).font(.body)
+                        if isSelected { Text("Selected").font(.caption2).foregroundStyle(.secondary) }
+                    }
+                    Spacer()
+                    Button(role: .destructive) {
+                        onDelete()
+                    } label: {
+                        Image(systemName: "trash")
+                            .imageScale(.medium)
+                    }
+                    .accessibilityLabel("Delete list")
+                }
+                .contentShape(Rectangle())
+                .padding(.horizontal)
+                .padding(.vertical, 12)
+                .background(Rectangle().fill(Color(.secondarySystemBackground)).opacity(0.001))
+                .onTapGesture { onToggle() }
+            }
+        }
+
+        var body: some View {
+            NavigationStack {
+                VStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Add to Lists").font(.title3.weight(.semibold))
+                        Text("Select the lists to include this title. You can also create a new list.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 16)
+
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                        TextField("Search lists", text: .constant(""))
+                            .textFieldStyle(.plain)
+                            .disabled(true)
+                    }
+                    .padding(10)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .padding(.horizontal)
+                    .padding(.top, 12)
+
+                    Group {
+                        if userLists.isEmpty {
+                            VStack(spacing: 8) {
+                                Image(systemName: "list.bullet.rectangle").font(.system(size: 28)).foregroundStyle(.secondary)
+                                Text("No lists yet").font(.headline)
+                                Text("Create your first list below.").font(.footnote).foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 24)
+                        } else {
+                            ScrollView {
+                                LazyVStack(spacing: 0) {
+                                    ForEach(userLists) { list in
+                                        let isSelected = selectedLists.contains(list.id)
+                                        ListRowView(list: list, isSelected: isSelected) {
+                                            if selectedLists.contains(list.id) { selectedLists.remove(list.id) } else { selectedLists.insert(list.id) }
+                                            if let uid = authVM.user?.id, let profileId = currentProfileId, let movie = currentMovie {
+                                                Task { await saveSelections(uid, profileId, movie) }
+                                            }
+                                        } onDelete: {
+                                            listPendingDeletion = list
+                                        }
+                                        Divider().padding(.leading, 48)
+                                    }
+                                }
+                            }
+                            .padding(.top, 8)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            TextField("Create new list", text: $newListName)
+                                .textFieldStyle(.roundedBorder)
+                            Button("Add") {
+                                Task {
+                                    if let uid = authVM.user?.id, let profileId = currentProfileId {
+                                        await addNewList(uid, profileId, newListName)
+                                    }
+                                    newListName = ""
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
+
+                    HStack(spacing: 12) {
+                        Button("Cancel") { isShowingListsSheet = false }
+                            .buttonStyle(.bordered)
+                        Spacer()
+                        Button("Save") {
+                            Task {
+                                if let uid = authVM.user?.id, let profileId = currentProfileId, let movie = currentMovie {
+                                    await saveSelections(uid, profileId, movie)
+                                }
+                                isShowingListsSheet = false
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
+                    .background(.ultraThinMaterial)
+                }
+                .navigationTitle("Lists")
+                .navigationBarTitleDisplayMode(.inline)
+                .alert("Delete list?", isPresented: Binding(get: { listPendingDeletion != nil }, set: { if !$0 { listPendingDeletion = nil } })) {
+                    Button("Delete", role: .destructive) {
+                        if let uid = authVM.user?.id, let profileId = currentProfileId, let pending = listPendingDeletion {
+                            Task { await deleteList(uid, profileId, pending.id) }
+                        }
+                        listPendingDeletion = nil
+                    }
+                    Button("Cancel", role: .cancel) { listPendingDeletion = nil }
+                } message: {
+                    if let pending = listPendingDeletion {
+                        Text("Are you sure you want to delete \(pending.name)? This action cannot be undone.")
+                    } else {
+                        Text("Are you sure you want to delete this list? This action cannot be undone.")
+                    }
+                }
+            }
+            .onAppear {
+                if let uid = authVM.user?.id, let profileId = currentProfileId, let movie = currentMovie {
+                    startListsListener(uid, profileId, movie)
+                    Task { await loadSelections(uid, profileId, movie) }
+                } else {
+                    selectedLists = []
+                    userLists = []
+                }
+            }
+            .onDisappear {
+                // The listener is managed by the parent view; nothing to remove here.
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    private struct RatingSheetView: View {
+        let currentMovie: Movie?
+        @Binding var tempRating: Double
+        @Binding var userPreviousRating: Double?
+        @Binding var isShowingRatingSheet: Bool
+        let submitRating: (Double) async -> Void
+        let removeRating: () async -> Void
+
+        private func actionButtons() -> some View {
+            HStack(spacing: 12) {
+                Button("Cancel") { isShowingRatingSheet = false }
+                    .buttonStyle(.bordered)
+                Button("Save") {
+                    isShowingRatingSheet = false
+                    Task { await submitRating(tempRating) }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
+                if userPreviousRating != nil {
+                    Button(role: .destructive) {
+                        isShowingRatingSheet = false
+                        Task { await removeRating() }
+                    } label: { Text("Remove Rating") }
+                }
+            }
+        }
+
+        var body: some View {
+            VStack(spacing: 16) {
+                if let movie = currentMovie {
+                    Spacer(minLength: 20)
+                    Text(movie.title)
+                        .font(.title3.weight(.bold))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(3)
+                        .frame(maxWidth: .infinity)
+                    Text("Rate this title")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    StarRatingView(rating: $tempRating, starSize: 48)
+                        .frame(height: 58)
+                    actionButtons()
+                }
+            }
+            .padding()
+            .presentationDetents([.height(255), .medium])
+        }
+    }
+
+    private var pickerScrollContent: some View {
+        ScrollView {
+            VStack(spacing: 28) {
+                Spacer(minLength: 0)
+                mainContent
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var ratingSheetContent: some View {
+        RatingSheetView(
+            currentMovie: movies[safe: currentIndex],
+            tempRating: $tempRating,
+            userPreviousRating: $userPreviousRating,
+            isShowingRatingSheet: $isShowingRatingSheet,
+            submitRating: submitRating,
+            removeRating: removeRating
+        )
+    }
+
+    @ViewBuilder
+    private var listsSheetContent: some View {
+        ListsSheetView(
+            currentProfileId: $currentProfileId,
+            userLists: $userLists,
+            selectedLists: $selectedLists,
+            newListName: $newListName,
+            listPendingDeletion: $listPendingDeletion,
+            isShowingListsSheet: $isShowingListsSheet,
+            currentMovie: movies[safe: currentIndex],
+            startListsListener: startListsListener,
+            loadSelections: loadSelections,
+            addNewList: addNewList,
+            saveSelections: saveSelections,
+            deleteList: deleteList
+        )
+        .environmentObject(authVM)
+    }
+
+    private func handleAppear() {
+        if authVM.user != nil {
+            currentProfileId = authVM.currentProfile?.id
+        } else {
+            currentProfileId = nil
+        }
+
+        refreshListsAndRatingsIfPossible()
+    }
+
+    private func handleKindChange() {
+        movies = []
+        currentIndex = 0
+        loadMoviesForCurrentKind()
+        Task { @MainActor in
+            refreshListsAndRatingsIfPossible()
+        }
+    }
+
+    private var navigationContent: some View {
+        NavigationStack {
+            pickerScrollContent
+            .background(swipeGlowBackground)
+            .navigationTitle("Picker")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                principalToolbar
+            }
+            .onAppear {
+                handleAppear()
+            }
+            .onChange(of: currentProfileId) { _ in
+                refreshListsAndRatingsIfPossible()
+            }
+            .onChange(of: currentIndex) { _ in
+                refreshListsAndRatingsIfPossible()
+            }
+            .onChange(of: movies) { _ in
+                refreshListsAndRatingsIfPossible()
+            }
+            .onDisappear { listsListener?.remove(); listsListener = nil }
+            .sheet(isPresented: $isShowingRatingSheet) {
+                ratingSheetContent
+            }
+            .sheet(isPresented: $isShowingListsSheet) {
+                listsSheetContent
+            }
         }
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 28) {
-                    Spacer(minLength: 0)
-                    mainContent
-                    Spacer(minLength: 0)
-                }
-            }
-            .background(
-                ZStack {
-                    // Left red glow
-                    LinearGradient(
-                        colors: [Color.red.opacity(0.45), .clear],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                    .opacity(max(0, Double(min(abs(dragOffset) / 120, 1.0))) * (dragOffset < 0 ? 1 : 0))
-                    .ignoresSafeArea()
-
-                    // Right green glow
-                    LinearGradient(
-                        colors: [Color.clear, Color.green.opacity(0.45)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                    .opacity(max(0, Double(min(abs(dragOffset) / 120, 1.0))) * (dragOffset > 0 ? 1 : 0))
-                    .ignoresSafeArea()
-                }
-            )
-            .navigationTitle("Picker")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Picker("Kind", selection: $kind) {
-                        ForEach(ContentKind.allCases) { k in
-                            Text(k.rawValue).tag(k)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 220)
-                }
-            }
-            .onAppear {
-                if let uid = authVM.user?.id, let movie = movies[safe: currentIndex] {
-                    startListsListener(uid: uid, movie: movie)
-                    Task {
-                        await loadSelections(uid: uid, movie: movie)
-                        await fetchUserRatingForCurrent()
-                    }
-                }
-            }
-            .onChange(of: currentIndex) { _ in
-                if let uid = authVM.user?.id, let movie = movies[safe: currentIndex] {
-                    startListsListener(uid: uid, movie: movie)
-                    Task {
-                        await loadSelections(uid: uid, movie: movie)
-                        await fetchUserRatingForCurrent()
-                    }
-                } else {
-                    // Clear selection if no movie
-                    selectedLists = []
-                }
-            }
-            .onChange(of: movies) { _ in
-                if let uid = authVM.user?.id, let movie = movies[safe: currentIndex] {
-                    startListsListener(uid: uid, movie: movie)
-                    Task {
-                        await loadSelections(uid: uid, movie: movie)
-                        await fetchUserRatingForCurrent()
-                    }
-                } else {
-                    selectedLists = []
-                }
-            }
-            .onDisappear { listsListener?.remove(); listsListener = nil }
-            .sheet(isPresented: $isShowingRatingSheet) {
-                VStack(spacing: 16) {
-                    if let movie = movies[safe: currentIndex] {
-                        Text("Rate \(movie.title)").font(.headline)
-                        StarRatingView(rating: $tempRating, starSize: 50)
-                            .frame(height: 70)
-                        HStack(spacing: 12) {
-                            Button("Cancel") { isShowingRatingSheet = false }
-                                .buttonStyle(.bordered)
-                            Button("Save") {
-                                isShowingRatingSheet = false
-                                Task { await submitRating(tempRating) }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.green)
-                            if userPreviousRating != nil {
-                                Button(role: .destructive) {
-                                    isShowingRatingSheet = false
-                                    Task { await removeRating() }
-                                } label: { Text("Remove Rating") }
-                            }
-                        }
-                    }
-                }
-                .padding()
-                .presentationDetents([.height(220), .medium])
-            }
-            .sheet(isPresented: $isShowingListsSheet) {
-                NavigationStack {
-                    VStack(spacing: 0) {
-                        // Header
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Add to Lists").font(.title3.weight(.semibold))
-                            Text("Select the lists to include this title. You can also create a new list.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.horizontal)
-                        .padding(.top, 16)
-
-                        // Search (placeholder for now)
-                        HStack(spacing: 8) {
-                            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                            TextField("Search lists", text: .constant(""))
-                                .textFieldStyle(.plain)
-                                .disabled(true)
-                        }
-                        .padding(10)
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .padding(.horizontal)
-                        .padding(.top, 12)
-
-                        // Lists
-                        Group {
-                            if userLists.isEmpty {
-                                VStack(spacing: 8) {
-                                    Image(systemName: "list.bullet.rectangle").font(.system(size: 28)).foregroundStyle(.secondary)
-                                    Text("No lists yet").font(.headline)
-                                    Text("Create your first list below.").font(.footnote).foregroundStyle(.secondary)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 24)
-                            } else {
-                                ScrollView {
-                                    LazyVStack(spacing: 0) {
-                                        ForEach(userLists) { list in
-                                            let isSelected = selectedLists.contains(list.id)
-                                            HStack(spacing: 12) {
-                                                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                                    .foregroundStyle(isSelected ? Color.green : Color.secondary)
-                                                    .imageScale(.large)
-                                                VStack(alignment: .leading, spacing: 2) {
-                                                    Text(list.name).font(.body)
-                                                    if isSelected { Text("Selected").font(.caption2).foregroundStyle(.secondary) }
-                                                }
-                                                Spacer()
-                                                Button(role: .destructive) {
-                                                    listPendingDeletion = list
-                                                } label: {
-                                                    Image(systemName: "trash")
-                                                        .imageScale(.medium)
-                                                }
-                                                .accessibilityLabel("Delete list")
-                                            }
-                                            .contentShape(Rectangle())
-                                            .padding(.horizontal)
-                                            .padding(.vertical, 12)
-                                            .background(
-                                                Rectangle().fill(Color(.secondarySystemBackground)).opacity(0.001)
-                                            )
-                                            .onTapGesture {
-                                                if selectedLists.contains(list.id) { selectedLists.remove(list.id) } else { selectedLists.insert(list.id) }
-                                                if let uid = authVM.user?.id, let movie = movies[safe: currentIndex] {
-                                                    Task { await saveSelections(uid: uid, movie: movie) }
-                                                }
-                                            }
-                                            Divider().padding(.leading, 48)
-                                        }
-                                    }
-                                }
-                                .padding(.top, 8)
-                            }
-                        }
-
-                        // Create new list
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 8) {
-                                TextField("Create new list", text: $newListName)
-                                    .textFieldStyle(.roundedBorder)
-                                Button("Add") {
-                                    Task {
-                                        if let uid = authVM.user?.id { await addNewList(uid: uid, name: newListName) }
-                                        newListName = ""
-                                    }
-                                }
-                                .buttonStyle(.borderedProminent)
-                            }
-                        }
-                        .padding(.horizontal)
-                        .padding(.vertical, 12)
-
-                        // Bottom bar
-                        HStack(spacing: 12) {
-                            Button("Cancel") { isShowingListsSheet = false }
-                                .buttonStyle(.bordered)
-                            Spacer()
-                            Button("Save") {
-                                Task {
-                                    if let uid = authVM.user?.id, let movie = movies[safe: currentIndex] {
-                                        await saveSelections(uid: uid, movie: movie)
-                                    }
-                                    isShowingListsSheet = false
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-                        }
-                        .padding(.horizontal)
-                        .padding(.vertical, 12)
-                        .background(.ultraThinMaterial)
-                    }
-                    .navigationTitle("Lists")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .alert("Delete list?", isPresented: Binding(
-                        get: { listPendingDeletion != nil },
-                        set: { if !$0 { listPendingDeletion = nil } }
-                    )) {
-                        Button("Delete", role: .destructive) {
-                            if let uid = authVM.user?.id, let pending = listPendingDeletion {
-                                Task { await deleteList(uid: uid, listID: pending.id) }
-                            }
-                            listPendingDeletion = nil
-                        }
-                        Button("Cancel", role: .cancel) { listPendingDeletion = nil }
-                    } message: {
-                        if let pending = listPendingDeletion {
-                            Text("Are you sure you want to delete \(pending.name)? This action cannot be undone.")
-                        } else {
-                            Text("Are you sure you want to delete this list? This action cannot be undone.")
-                        }
-                    }
-                }
-                .onAppear {
-                    if let uid = authVM.user?.id, let movie = movies[safe: currentIndex] {
-                        startListsListener(uid: uid, movie: movie)
-                        Task { await loadSelections(uid: uid, movie: movie) }
-                    }
-                }
-                .onDisappear {
-                    listsListener?.remove()
-                    listsListener = nil
-                }
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-            }
-        }
+        navigationContent
         .task {
             if movies.isEmpty { loadMovies() }
             // Preload list selections for current movie if available
-            if let uid = authVM.user?.id, let movie = movies[safe: currentIndex] {
-                startListsListener(uid: uid, movie: movie)
-                Task {
-                    await loadSelections(uid: uid, movie: movie)
-                    await fetchUserRatingForCurrent()
-                }
-            }
+            refreshListsAndRatingsIfPossible()
         }
         .onChange(of: kind) { _ in
-            movies = []
-            currentIndex = 0
-            loadMoviesForCurrentKind()
-            // After kind changes, attempt to refresh list selections for the first movie (if user exists)
-            Task { @MainActor in
-                if let uid = authVM.user?.id, let movie = movies[safe: currentIndex] {
-                    startListsListener(uid: uid, movie: movie)
-                    Task {
-                        await loadSelections(uid: uid, movie: movie)
-                        await fetchUserRatingForCurrent()
-                    }
-                } else {
-                    selectedLists = []
-                }
-            }
+            handleKindChange()
         }
     }
     
@@ -615,10 +794,15 @@ struct PickerView: View {
     }
 
     // MARK: - Lists helpers
-    private func startListsListener(uid: String, movie: Movie) {
+    // NOTE: New Firestore structure: users/{userId}/profiles/{profileId}/lists/{listId}
+    // All functions below require profileId, and will abort or clear UI if missing.
+
+    private func startListsListener(userId: String, profileId: String, movie: Movie) {
         let ref = Firestore.firestore()
             .collection("users")
-            .document(uid)
+            .document(userId)
+            .collection("profiles")
+            .document(profileId)
             .collection("lists")
             .order(by: "createdAt", descending: false)
         listsListener?.remove()
@@ -633,16 +817,23 @@ struct PickerView: View {
                 return CustomUserList(id: doc.documentID, name: name)
             }
             self.userLists = lists
-            Task { await loadSelections(uid: uid, movie: movie) }
+            Task { await loadSelections(userId: userId, profileId: profileId, movie: movie) }
         }
     }
 
-    private func loadSelections(uid: String, movie: Movie) async {
+    private func loadSelections(userId: String, profileId: String, movie: Movie) async {
+        guard !userLists.isEmpty else {
+            await MainActor.run {
+                self.selectedLists = []
+            }
+            return
+        }
         let type = (movie.mediaType ?? "movie").lowercased()
         let db = Firestore.firestore()
         var newSelected: Set<String> = []
         for list in userLists {
-            let itemRef = db.collection("users").document(uid)
+            let itemRef = db.collection("users").document(userId)
+                .collection("profiles").document(profileId)
                 .collection("lists").document(list.id)
                 .collection("items").document("\(type):\(movie.id)")
             do {
@@ -655,12 +846,14 @@ struct PickerView: View {
         await MainActor.run { self.selectedLists = newSelected }
     }
 
-    private func addNewList(uid: String, name: String) async {
+    private func addNewList(userId: String, profileId: String, name: String) async {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let db = Firestore.firestore()
         do {
-            let ref = db.collection("users").document(uid).collection("lists").document()
+            let ref = db.collection("users").document(userId)
+                .collection("profiles").document(profileId)
+                .collection("lists").document()
             try await ref.setData([
                 "name": trimmed,
                 "createdAt": FieldValue.serverTimestamp()
@@ -670,12 +863,13 @@ struct PickerView: View {
         }
     }
 
-    private func saveSelections(uid: String, movie: Movie) async {
+    private func saveSelections(userId: String, profileId: String, movie: Movie) async {
         let type = (movie.mediaType ?? "movie").lowercased()
         let db = Firestore.firestore()
         let key = "\(type):\(movie.id)"
         for list in userLists {
-            let itemRef = db.collection("users").document(uid)
+            let itemRef = db.collection("users").document(userId)
+                .collection("profiles").document(profileId)
                 .collection("lists").document(list.id)
                 .collection("items").document(key)
             do {
@@ -694,10 +888,12 @@ struct PickerView: View {
         }
     }
     
-    private func deleteList(uid: String, listID: String) async {
+    private func deleteList(userId: String, profileId: String, listID: String) async {
         let db = Firestore.firestore()
         do {
-            try await db.collection("users").document(uid).collection("lists").document(listID).delete()
+            try await db.collection("users").document(userId)
+                .collection("profiles").document(profileId)
+                .collection("lists").document(listID).delete()
             // If the deleted list was selected, remove it locally
             await MainActor.run { self.selectedLists.remove(listID) }
         } catch {
@@ -723,18 +919,22 @@ struct PickerView: View {
         }
     }
     
-    // Updated helper to fetch user rating for current movie
+    // MARK: - Rating helpers with profile-specific Firestore storage
+    
     private func fetchUserRatingForCurrent() async {
-        guard let uid = authVM.user?.id, let movie = movies[safe: currentIndex] else { return }
+        // Changed to profile-specific rating storage
+        guard let uid = authVM.user?.id, let profileId = currentProfileId, let movie = movies[safe: currentIndex] else { return }
         let type = (movie.mediaType ?? "movie").lowercased()
         let db = Firestore.firestore()
-        let doc = db.collection("ratings")
-            .document("\(type):\(movie.id)")
-            .collection("userRatings")
+        let docRef = db.collection("users")
             .document(uid)
+            .collection("profiles")
+            .document(profileId)
+            .collection("ratings")
+            .document("\(type):\(movie.id)")
         do {
-            let snap = try await doc.getDocument()
-            if let val = snap.data()? ["rating"] as? Double {
+            let snap = try await docRef.getDocument()
+            if let val = snap.data()?["rating"] as? Double {
                 await MainActor.run {
                     self.userPreviousRating = val
                     self.tempRating = val
@@ -750,42 +950,72 @@ struct PickerView: View {
         }
     }
 
-    // MARK: - Ratings helpers
-    // Updated submitRating to use repository aggregate and print debug info
     private func submitRating(_ value: Double) async {
-        guard let uid = authVM.user?.id, let movie = movies[safe: currentIndex] else { return }
+        // Changed to profile-specific rating storage
+        guard let uid = authVM.user?.id, let profileId = currentProfileId, let movie = movies[safe: currentIndex] else { return }
         let type = (movie.mediaType ?? "movie").lowercased()
-        let repo = RatingsRepository()
+        let db = Firestore.firestore()
+        let docRef = db.collection("users")
+            .document(uid)
+            .collection("profiles")
+            .document(profileId)
+            .collection("ratings")
+            .document("\(type):\(movie.id)")
         do {
-            let agg = try await repo.submitRating(uid: uid, movieID: movie.id, type: type, value: value)
+            try await docRef.setData([
+                "rating": value,
+                "updatedAt": FieldValue.serverTimestamp()
+            ], merge: true)
             await MainActor.run {
                 self.userPreviousRating = value
             }
-            // Optionally log aggregate for debugging
-            print("[Picker Rating] submit success -> count=", agg.count, " avg=", agg.average)
+            // Optionally print debug info
+            print("[Picker Rating] submit success for profile-specific rating")
         } catch {
             print("[Picker Rating] submit failed:", error.localizedDescription)
         }
     }
 
-    // Updated removeRating to use repository deletion and safe UI normalization
     private func removeRating() async {
-        guard let uid = authVM.user?.id, let movie = movies[safe: currentIndex], let old = userPreviousRating else { return }
+        // Changed to profile-specific rating storage
+        guard let uid = authVM.user?.id, let profileId = currentProfileId, let movie = movies[safe: currentIndex], let _ = userPreviousRating else { return }
         let type = (movie.mediaType ?? "movie").lowercased()
-        let repo = RatingsRepository()
+        let db = Firestore.firestore()
+        let docRef = db.collection("users")
+            .document(uid)
+            .collection("profiles")
+            .document(profileId)
+            .collection("ratings")
+            .document("\(type):\(movie.id)")
         do {
-            let agg = try await repo.deleteRating(uid: uid, movieID: movie.id, type: type, previousValue: old)
+            try await docRef.delete()
             await MainActor.run {
                 self.userPreviousRating = nil
                 self.tempRating = 0
             }
-            print("[Picker Rating] remove success -> count=", agg.count, " avg=", agg.average)
+            print("[Picker Rating] remove success for profile-specific rating")
         } catch {
             print("[Picker Rating] remove failed:", error.localizedDescription)
             await MainActor.run {
                 self.userPreviousRating = nil
                 self.tempRating = 0
             }
+        }
+    }
+
+    // Centralized refresh helper to reduce repeated complex closures
+    private func refreshListsAndRatingsIfPossible() {
+        if let uid = authVM.user?.id,
+           let profileId = currentProfileId,
+           let movie = movies[safe: currentIndex] {
+            startListsListener(userId: uid, profileId: profileId, movie: movie)
+            Task {
+                await loadSelections(userId: uid, profileId: profileId, movie: movie)
+                await fetchUserRatingForCurrent()
+            }
+        } else {
+            selectedLists = []
+            userLists = []
         }
     }
     
@@ -800,85 +1030,118 @@ struct PickerView: View {
             do {
                 switch kind {
                 case .movies:
-                    let pages = Array(1...10)
-                    let results: [[Movie]] = try await withThrowingTaskGroup(of: [Movie].self, returning: [[Movie]].self) { group in
+                    let pages: [Int] = Array(1...10)
+                    var results: [[Movie]] = []
+                    try await withThrowingTaskGroup(of: [Movie].self) { group in
                         for p in pages {
-                            group.addTask { try await MovieService().getTrending(page: p) }
+                            group.addTask {
+                                let svc = MovieService()
+                                return try await svc.getTrending(page: p)
+                            }
                         }
-                        var acc: [[Movie]] = []
-                        for try await res in group { acc.append(res) }
-                        return acc
+                        for try await res in group {
+                            results.append(res)
+                        }
                     }
-                    var combined: [Movie] = results.flatMap { $0 }
-                    var seen = Set<Int>()
-                    combined = combined.filter { m in
-                        if seen.contains(m.id) { return false }
-                        seen.insert(m.id)
-                        return true
+                    // Flatten results
+                    var combined: [Movie] = []
+                    for pageResults in results {
+                        combined.append(contentsOf: pageResults)
                     }
-                    combined.shuffle()
+                    // Deduplicate by id
+                    var seen: Set<Int> = []
+                    var deduped: [Movie] = []
+                    for m in combined {
+                        if !seen.contains(m.id) {
+                            seen.insert(m.id)
+                            deduped.append(m)
+                        }
+                    }
+                    // Shuffle after dedupe
+                    var shuffled = deduped
+                    shuffled.shuffle()
+                    // Filter out recently disliked
                     let filtered: [Movie]
                     if let uid = authVM.user?.id {
                         let disliked = await fetchRecentlyDislikedIDs(uid: uid)
-                        filtered = combined.filter { !disliked.contains($0.id) }
+                        filtered = shuffled.filter { movie in !disliked.contains(movie.id) }
                     } else {
-                        filtered = combined
+                        filtered = shuffled
                     }
                     await MainActor.run {
                         self.movies = filtered
                     }
                 case .tv:
-                    let pages = Array(1...10)
-                    let results: [[Movie]] = try await withThrowingTaskGroup(of: [Movie].self, returning: [[Movie]].self) { group in
+                    let pages: [Int] = Array(1...10)
+                    var results: [[Movie]] = []
+                    try await withThrowingTaskGroup(of: [Movie].self) { group in
                         for p in pages {
-                            group.addTask { try await MovieService().getTrendingTV(page: p) }
+                            group.addTask {
+                                let svc = MovieService()
+                                return try await svc.getTrendingTV(page: p)
+                            }
                         }
-                        var acc: [[Movie]] = []
-                        for try await res in group { acc.append(res) }
-                        return acc
+                        for try await res in group {
+                            results.append(res)
+                        }
                     }
-                    var combined: [Movie] = results.flatMap { $0 }
-                    var seen = Set<Int>()
-                    combined = combined.filter { m in
-                        if seen.contains(m.id) { return false }
-                        seen.insert(m.id)
-                        return true
+                    // Flatten results
+                    var combined: [Movie] = []
+                    for pageResults in results {
+                        combined.append(contentsOf: pageResults)
                     }
-                    combined.shuffle()
+                    // Deduplicate by id
+                    var seen: Set<Int> = []
+                    var deduped: [Movie] = []
+                    for m in combined {
+                        if !seen.contains(m.id) {
+                            seen.insert(m.id)
+                            deduped.append(m)
+                        }
+                    }
+                    // Shuffle after dedupe
+                    var shuffled = deduped
+                    shuffled.shuffle()
+                    // Filter out recently disliked
                     let filtered: [Movie]
                     if let uid = authVM.user?.id {
                         let disliked = await fetchRecentlyDislikedIDs(uid: uid)
-                        filtered = combined.filter { !disliked.contains($0.id) }
+                        filtered = shuffled.filter { movie in !disliked.contains(movie.id) }
                     } else {
-                        filtered = combined
+                        filtered = shuffled
                     }
                     await MainActor.run {
                         self.movies = filtered
                     }
                 }
                 await MainActor.run {
-                    self.currentIndex = 0
-                    self.isLoading = false
-                    if let profile = authVM.user {
+                    if let user = authVM.user, let profile = authVM.currentProfile {
                         self.localWatched = Set(profile.watchedEntries.map { "\($0.type.lowercased()):\($0.id)" })
                         self.localWatchlist = Set(profile.watchlistEntries.map { "\($0.type.lowercased()):\($0.id)" })
                         self.localFavorites = Set(profile.favoritesEntries.map { "\($0.type.lowercased()):\($0.id)" })
+                        self.currentProfileId = profile.id
                     } else {
                         self.localWatched = []
                         self.localWatchlist = []
                         self.localFavorites = []
+                        self.currentProfileId = nil
                     }
                 }
                 await MainActor.run {
-                    if let uid = authVM.user?.id, let first = self.movies[safe: self.currentIndex] {
-                        startListsListener(uid: uid, movie: first)
+                    if let uid = authVM.user?.id,
+                       let profileId = currentProfileId,
+                       let first = self.movies[safe: self.currentIndex] {
+                        startListsListener(userId: uid, profileId: profileId, movie: first)
                         Task {
-                            await loadSelections(uid: uid, movie: first)
+                            await loadSelections(userId: uid, profileId: profileId, movie: first)
                             await fetchUserRatingForCurrent()
                         }
                     } else {
                         self.selectedLists = []
+                        self.userLists = []
                     }
+                    self.currentIndex = min(self.currentIndex, max(self.movies.count - 1, 0))
+                    self.isLoading = false
                 }
             } catch {
                 await MainActor.run {
@@ -901,4 +1164,3 @@ private extension Array {
     PickerView()
         .environmentObject(AuthViewModel())
 }
-

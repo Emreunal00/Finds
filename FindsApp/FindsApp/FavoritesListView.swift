@@ -62,13 +62,15 @@ struct FavoritesListView: View {
 
     private let service: MovieServicing = MovieService()
 
+    // Updated to use currentProfile instead of user for entries
     private var entriesRaw: [WatchedEntry] {
-        guard let u = authVM.user else { return [] }
-        if !u.favoritesEntries.isEmpty {
-            return u.favoritesEntries
+        // Using currentProfile now for all favorites related data
+        guard let profile = authVM.currentProfile else { return [] }
+        if !profile.favoritesEntries.isEmpty {
+            return profile.favoritesEntries
         } else {
-            // legacy fallback: favoritesIDs -> movie
-            return u.favoritesIDs.map { WatchedEntry(id: $0, type: "movie") }
+            // Legacy fallback: deprecated, kept for migration only
+            return authVM.user?.favoritesIDs.map { WatchedEntry(id: $0, type: "movie") } ?? []
         }
     }
 
@@ -143,15 +145,20 @@ struct FavoritesListView: View {
         }
         .task { await loadAll() }
         .onChange(of: authVM.listsVersion) { _ in Task { await loadAll() } }
+        // Added onChange for currentProfile to reload when profile changes
+        .onChange(of: authVM.currentProfile) { _ in Task { await loadAll() } }
         .overlay {
             if showingDeletionConfirm, let movie = pendingDeletionMovie {
+                // Use currentProfile's displayName if available, else fallback to movie.title
+                let displayName = authVM.currentProfile?.displayName ?? movie.title
                 ZStack {
                     Color.black.opacity(0.4)
                         .ignoresSafeArea()
                     VStack(spacing: 16) {
                         Text("Remove from Favorites?")
                             .font(.headline)
-                        Text("This will remove \(movie.title) from your Favorites.")
+                        // Updated text to use displayName
+                        Text("This will remove \(displayName) from your Favorites.")
                             .multilineTextAlignment(.center)
                             .font(.subheadline)
                             .foregroundColor(.secondary)

@@ -6,6 +6,13 @@ import FirebaseFirestore
 @MainActor
 final class AuthViewModel: ObservableObject {
     @Published var user: UserProfile?
+
+    /// Currently selected user profile (if available)
+    var currentProfile: Profile? {
+        guard let user = user, let selectedID = user.selectedProfileID else { return user?.profiles.first }
+        return user.profiles.first(where: { $0.id == selectedID }) ?? user.profiles.first
+    }
+
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var listsVersion = 0
@@ -31,18 +38,22 @@ final class AuthViewModel: ObservableObject {
         if let uid {
             do {
                 let profile = try await service.fetchProfile(uid: uid)
-                self.user = profile
+                let normalizedProfile = await ensureProfileExistsIfNeeded(profile)
+                self.user = normalizedProfile
                 self.errorMessage = nil
                 debugPrint("[Auth] Auth state changed -> signed in uid=\(uid)")
-                debugPrint("[Auth] Initial profile fetched. favEntries=\(profile.favoritesEntries.count) watchEntries=\(profile.watchlistEntries.count) watched=\(profile.watchedEntries.count)")
+                let initialProfile = self.currentProfile
+                debugPrint("[Auth] Initial profile fetched. favEntries=\(initialProfile?.favoritesEntries.count ?? 0) watchEntries=\(initialProfile?.watchlistEntries.count ?? 0) watched=\(initialProfile?.watchedEntries.count ?? 0)")
 
                 profileObserver = service.observeProfile(uid: uid) { [weak self] result in
                     Task { @MainActor in
                         switch result {
                         case .success(let updated):
-                            self?.user = updated
+                            let normalizedProfile = await self?.ensureProfileExistsIfNeeded(updated) ?? updated
+                            self?.user = normalizedProfile
                             self?.listsVersion &+= 1
-                            debugPrint("[Auth] Profile updated via listener. favEntries=\(updated.favoritesEntries.count) watchEntries=\(updated.watchlistEntries.count) watched=\(updated.watchedEntries.count) listsVersion=\(self?.listsVersion ?? -1)")
+                            let active = self?.currentProfile
+                            debugPrint("[Auth] Profile updated via listener. favEntries=\(active?.favoritesEntries.count ?? 0) watchEntries=\(active?.watchlistEntries.count ?? 0) watched=\(active?.watchedEntries.count ?? 0) listsVersion=\(self?.listsVersion ?? -1)")
                         case .failure(let err):
                             debugPrint("[Auth] Profile listener error:", err.localizedDescription)
                         }
@@ -55,6 +66,75 @@ final class AuthViewModel: ObservableObject {
         } else {
             self.user = nil
             debugPrint("[Auth] Auth state changed -> signed out")
+        }
+    }
+
+    private func ensureProfileExistsIfNeeded(_ userProfile: UserProfile) async -> UserProfile {
+        guard userProfile.profiles.isEmpty else { return userProfile }
+
+        var updatedUser = userProfile
+        let fallbackName = Auth.auth().currentUser?.displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let emailPrefix = userProfile.email.split(separator: "@").first.map(String.init)
+        let profileName = fallbackName?.isEmpty == false ? fallbackName : (emailPrefix?.isEmpty == false ? emailPrefix : "Profile 1")
+        let profile = Profile(displayName: profileName, photoURL: nil)
+
+        updatedUser.profiles = [profile]
+        updatedUser.selectedProfileID = profile.id
+
+        let repo = UserProfileRepository()
+        try? await repo.createOrMerge(updatedUser)
+        return updatedUser
+    }
+
+    // MARK: - Profile Management
+
+    /// Selects active profile by id and persists to user
+    func selectProfile(_ profileID: String) {
+        guard var user = user else { return }
+        user.selectedProfileID = profileID
+        self.user = user
+        // Optionally persist to backend
+        Task {
+            let repo = UserProfileRepository()
+            try? await repo.createOrMerge(user)
+        }
+    }
+
+    /// Adds a new profile (with optional displayName and photoURL)
+    func addProfile(displayName: String?, photoURL: String?) async {
+        guard var user = user else { return }
+        var profiles = user.profiles
+        let profile = Profile(displayName: displayName, photoURL: photoURL)
+        profiles.append(profile)
+        user.profiles = profiles
+        user.selectedProfileID = profile.id
+        self.user = user
+        let repo = UserProfileRepository()
+        try? await repo.createOrMerge(user)
+    }
+
+    /// Deletes a profile by id (switches to another if needed)
+    func deleteProfile(_ profileID: String) async throws {
+        guard var user = user else { return }
+        guard user.profiles.count > 1 else { return }
+
+        let uid = user.id
+        let wasSelected = user.selectedProfileID == profileID
+        debugPrint("[Auth] deleteProfile start profileID=\(profileID) uid=\(uid ?? "-") profilesBefore=\(user.profiles.map(\.id)) selected=\(user.selectedProfileID ?? "-")")
+        user.profiles.removeAll { $0.id == profileID }
+        if wasSelected {
+            user.selectedProfileID = user.profiles.first?.id
+        }
+
+        self.user = user
+        let repo = UserProfileRepository()
+        try await repo.createOrMerge(user)
+        debugPrint("[Auth] deleteProfile persisted profileID=\(profileID) profilesAfter=\(user.profiles.map(\.id)) selected=\(user.selectedProfileID ?? "-")")
+
+        if let uid {
+            debugPrint("[Auth] deleteProfile cleanup start profileID=\(profileID)")
+            await removeProfileScopedData(uid: uid, profileID: profileID)
+            debugPrint("[Auth] deleteProfile cleanup end profileID=\(profileID)")
         }
     }
 
@@ -110,6 +190,28 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
+    private func removeProfileScopedData(uid: String, profileID: String) async {
+        let db = Firestore.firestore()
+        let profileDoc = db.collection("users").document(uid).collection("profiles").document(profileID)
+        do {
+            let listsSnapshot = try await profileDoc.collection("lists").getDocuments()
+            debugPrint("[Auth] removeProfileScopedData listsCount=\(listsSnapshot.documents.count) profileID=\(profileID)")
+
+            for listDoc in listsSnapshot.documents {
+                let itemsSnapshot = try? await listDoc.reference.collection("items").getDocuments()
+                debugPrint("[Auth] removeProfileScopedData deleting listID=\(listDoc.documentID) itemsCount=\(itemsSnapshot?.documents.count ?? 0)")
+                for itemDoc in itemsSnapshot?.documents ?? [] {
+                    try? await itemDoc.reference.delete()
+                }
+                try? await listDoc.reference.delete()
+            }
+
+            try? await profileDoc.delete()
+        } catch {
+            debugPrint("[Auth] removeProfileScopedData error:", error.localizedDescription)
+        }
+    }
+
     // MARK: - Profile updates
 
     func updateDisplayName(_ newName: String) async {
@@ -131,7 +233,11 @@ final class AuthViewModel: ObservableObject {
 
             // Merge into Firestore profile
             var current = try await service.fetchProfile(uid: uid)
-            current.displayName = trimmed
+            if let selectedID = current.selectedProfileID, let idx = current.profiles.firstIndex(where: { $0.id == selectedID }) {
+                current.profiles[idx].displayName = trimmed
+            } else if !current.profiles.isEmpty {
+                current.profiles[0].displayName = trimmed
+            }
             let repo = UserProfileRepository()
             try await repo.createOrMerge(current)
 
@@ -160,7 +266,11 @@ final class AuthViewModel: ObservableObject {
 
             // Merge into Firestore
             var current = try await service.fetchProfile(uid: uid)
-            current.photoURL = url
+            if let selectedID = current.selectedProfileID, let idx = current.profiles.firstIndex(where: { $0.id == selectedID }) {
+                current.profiles[idx].photoURL = url
+            } else if !current.profiles.isEmpty {
+                current.profiles[0].photoURL = url
+            }
             let repo = UserProfileRepository()
             try await repo.createOrMerge(current)
 
@@ -176,19 +286,31 @@ final class AuthViewModel: ObservableObject {
     // MARK: - List toggles (typed entries)
 
     func toggleFavorite(movieID: Int, mediaType: String) async {
-        guard let uid = service.currentUID, var profile = self.user else {
+        guard let uid = service.currentUID, var user = self.user else {
             self.errorMessage = "No active session."
+            return
+        }
+        guard let profile = currentProfile else {
+            self.errorMessage = "No active profile."
             return
         }
         let type = mediaType.lowercased()
         let entry = WatchedEntry(id: movieID, type: type)
         let repo = UserProfileRepository()
 
+        var updatedUser = user
+
         if let idx = profile.favoritesEntries.firstIndex(where: { $0.id == movieID && $0.type.lowercased() == type }) {
             do {
                 try await repo.removeFromFavorites(uid: uid, entry: entry)
-                profile.favoritesEntries.remove(at: idx)
-                self.user = profile
+                // Update the profile's favoritesEntries
+                updatedUser.profiles = updatedUser.profiles.map { p in
+                    guard p.id == profile.id else { return p }
+                    var copy = p
+                    copy.favoritesEntries.remove(at: idx)
+                    return copy
+                }
+                self.user = updatedUser
                 self.listsVersion &+= 1
             } catch {
                 self.errorMessage = error.localizedDescription
@@ -196,8 +318,13 @@ final class AuthViewModel: ObservableObject {
         } else {
             do {
                 try await repo.addToFavorites(uid: uid, entry: entry)
-                profile.favoritesEntries.append(entry)
-                self.user = profile
+                updatedUser.profiles = updatedUser.profiles.map { p in
+                    guard p.id == profile.id else { return p }
+                    var copy = p
+                    copy.favoritesEntries.append(entry)
+                    return copy
+                }
+                self.user = updatedUser
                 self.listsVersion &+= 1
             } catch {
                 self.errorMessage = error.localizedDescription
@@ -206,19 +333,30 @@ final class AuthViewModel: ObservableObject {
     }
 
     func toggleWatchlist(movieID: Int, mediaType: String) async {
-        guard let uid = service.currentUID, var profile = self.user else {
+        guard let uid = service.currentUID, var user = self.user else {
             self.errorMessage = "No active session."
+            return
+        }
+        guard let profile = currentProfile else {
+            self.errorMessage = "No active profile."
             return
         }
         let type = mediaType.lowercased()
         let entry = WatchedEntry(id: movieID, type: type)
         let repo = UserProfileRepository()
 
+        var updatedUser = user
+
         if let idx = profile.watchlistEntries.firstIndex(where: { $0.id == movieID && $0.type.lowercased() == type }) {
             do {
                 try await repo.removeFromWatchlist(uid: uid, entry: entry)
-                profile.watchlistEntries.remove(at: idx)
-                self.user = profile
+                updatedUser.profiles = updatedUser.profiles.map { p in
+                    guard p.id == profile.id else { return p }
+                    var copy = p
+                    copy.watchlistEntries.remove(at: idx)
+                    return copy
+                }
+                self.user = updatedUser
                 self.listsVersion &+= 1
             } catch {
                 self.errorMessage = error.localizedDescription
@@ -226,8 +364,13 @@ final class AuthViewModel: ObservableObject {
         } else {
             do {
                 try await repo.addToWatchlist(uid: uid, entry: entry)
-                profile.watchlistEntries.append(entry)
-                self.user = profile
+                updatedUser.profiles = updatedUser.profiles.map { p in
+                    guard p.id == profile.id else { return p }
+                    var copy = p
+                    copy.watchlistEntries.append(entry)
+                    return copy
+                }
+                self.user = updatedUser
                 self.listsVersion &+= 1
             } catch {
                 self.errorMessage = error.localizedDescription
@@ -236,19 +379,30 @@ final class AuthViewModel: ObservableObject {
     }
 
     func toggleWatched(movieID: Int, type: String) async {
-        guard let uid = service.currentUID, var profile = self.user else {
+        guard let uid = service.currentUID, var user = self.user else {
             self.errorMessage = "No active session."
+            return
+        }
+        guard let profile = currentProfile else {
+            self.errorMessage = "No active profile."
             return
         }
         let normType = type.lowercased()
         let entry = WatchedEntry(id: movieID, type: normType)
         let repo = UserProfileRepository()
 
+        var updatedUser = user
+
         if let idx = profile.watchedEntries.firstIndex(where: { $0.id == movieID && $0.type.lowercased() == normType }) {
             do {
                 try await repo.removeFromWatched(uid: uid, entry: entry)
-                profile.watchedEntries.remove(at: idx)
-                self.user = profile
+                updatedUser.profiles = updatedUser.profiles.map { p in
+                    guard p.id == profile.id else { return p }
+                    var copy = p
+                    copy.watchedEntries.remove(at: idx)
+                    return copy
+                }
+                self.user = updatedUser
                 self.listsVersion &+= 1
             } catch {
                 self.errorMessage = error.localizedDescription
@@ -256,8 +410,13 @@ final class AuthViewModel: ObservableObject {
         } else {
             do {
                 try await repo.addToWatched(uid: uid, entry: entry)
-                profile.watchedEntries.append(entry)
-                self.user = profile
+                updatedUser.profiles = updatedUser.profiles.map { p in
+                    guard p.id == profile.id else { return p }
+                    var copy = p
+                    copy.watchedEntries.append(entry)
+                    return copy
+                }
+                self.user = updatedUser
                 self.listsVersion &+= 1
             } catch {
                 self.errorMessage = error.localizedDescription

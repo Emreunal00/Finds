@@ -39,14 +39,21 @@ final class AuthService: AuthServicing {
         }
 
         let uid = result.user.uid
-        var profile = UserProfile.empty(uid: uid, email: email)
-        profile.displayName = displayName ?? result.user.displayName
-
         // Write minimal profile; do not wait for read-back
-        try await userRepo.createOrMerge(profile)
+        let initialProfile = Profile(displayName: displayName)
+        let minimalProfile = UserProfile(
+            id: uid,
+            email: email,
+            watchlistIDs: [],
+            watchedIDs: [],
+            favoritesIDs: [],
+            profiles: [initialProfile],
+            selectedProfileID: initialProfile.id
+        )
+        try await userRepo.createOrMerge(minimalProfile)
 
         // Return minimal profile; AuthViewModel will receive live updates via listener
-        return profile
+        return minimalProfile
     }
 
     func signIn(email: String, password: String) async throws -> UserProfile {
@@ -91,78 +98,12 @@ final class AuthService: AuthServicing {
                 guard let snapshot, snapshot.exists else {
                     onChange(.failure(NSError(domain: "UserProfile", code: 404, userInfo: [NSLocalizedDescriptionKey: "Profile not found"]))); return
                 }
-                let dict = snapshot.data() ?? [:]
-                let email = dict["email"] as? String ?? ""
-                let displayName = dict["displayName"] as? String
-                let photoURL = dict["photoURL"] as? String
-                let createdAtDate: Date = {
-                    if let ts = dict["createdAt"] as? Timestamp { return ts.dateValue() }
-                    else if let date = dict["createdAt"] as? Date { return date }
-                    else { return Date(timeIntervalSince1970: 0) }
-                }()
-
-                func ints(from any: Any?) -> [Int] {
-                    if let arr = any as? [Int] { return arr }
-                    if let arr = any as? [String] {
-                        return arr.compactMap { Int($0.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()) }
-                    }
-                    if let arr = any as? [NSNumber] { return arr.map { $0.intValue } }
-                    return []
+                do {
+                    let profile = try self.userRepo.decode(snapshot: snapshot)
+                    onChange(.success(profile))
+                } catch {
+                    onChange(.failure(error))
                 }
-
-                func entries(from any: Any?) -> [WatchedEntry] {
-                    if let arr = any as? [[String: Any]] {
-                        return arr.compactMap { m in
-                            if let id = m["id"] as? Int, let type = m["type"] as? String {
-                                return WatchedEntry(id: id, type: type)
-                            } else if let idNum = m["id"] as? NSNumber, let type = m["type"] as? String {
-                                return WatchedEntry(id: idNum.intValue, type: type)
-                            }
-                            return nil
-                        }
-                    }
-                    return []
-                }
-
-                let watchlistIDs = ints(from: dict["watchlistIDs"])
-                let watchedIDs = ints(from: dict["watchedIDs"])
-                let favoritesIDs = ints(from: dict["favoritesIDs"])
-
-                let watchedEntries: [WatchedEntry] = {
-                    let typed = entries(from: dict["watchedEntries"])
-                    if !typed.isEmpty { return typed }
-                    if !watchedIDs.isEmpty { return watchedIDs.map { WatchedEntry(id: $0, type: "movie") } }
-                    return []
-                }()
-
-                let favoritesEntries: [WatchedEntry] = {
-                    let typed = entries(from: dict["favoritesEntries"])
-                    if !typed.isEmpty { return typed }
-                    if !favoritesIDs.isEmpty { return favoritesIDs.map { WatchedEntry(id: $0, type: "movie") } }
-                    return []
-                }()
-
-                let watchlistEntries: [WatchedEntry] = {
-                    let typed = entries(from: dict["watchlistEntries"])
-                    if !typed.isEmpty { return typed }
-                    if !watchlistIDs.isEmpty { return watchlistIDs.map { WatchedEntry(id: $0, type: "movie") } }
-                    return []
-                }()
-
-                let profile = UserProfile(
-                    id: snapshot.documentID,
-                    email: email,
-                    displayName: displayName,
-                    photoURL: photoURL,
-                    createdAt: createdAtDate,
-                    watchlistIDs: watchlistIDs,
-                    watchedIDs: watchedIDs,
-                    favoritesIDs: favoritesIDs,
-                    watchedEntries: watchedEntries,
-                    favoritesEntries: favoritesEntries,
-                    watchlistEntries: watchlistEntries
-                )
-                onChange(.success(profile))
             }
 
         profileListenerHandle = handle

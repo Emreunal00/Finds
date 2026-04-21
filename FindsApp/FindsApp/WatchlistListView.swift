@@ -61,12 +61,14 @@ struct WatchlistListView: View {
 
     private let service: MovieServicing = MovieService()
 
+    // Use watchlistEntries from currentProfile instead of user, fallback to legacy user.watchlistIDs for migration only
     private var entriesRaw: [WatchedEntry] {
-        guard let u = authVM.user else { return [] }
-        if !u.watchlistEntries.isEmpty {
-            return u.watchlistEntries
+        guard let profile = authVM.currentProfile else { return [] }
+        if !profile.watchlistEntries.isEmpty {
+            return profile.watchlistEntries
         } else {
-            return u.watchlistIDs.map { WatchedEntry(id: $0, type: "movie") }
+            // Legacy fallback: deprecated, kept for migration only
+            return authVM.user?.watchlistIDs.map { WatchedEntry(id: $0, type: "movie") } ?? []
         }
     }
 
@@ -138,6 +140,8 @@ struct WatchlistListView: View {
         }
         .task { await loadAll() }
         .onChange(of: authVM.listsVersion) { _ in Task { await loadAll() } }
+        // Reload watchlist when the current profile changes
+        .onChange(of: authVM.currentProfile) { _ in Task { await loadAll() } }
         .overlay {
             if showingDeletionConfirm, let movie = pendingDeletionMovie {
                 ZStack {
@@ -238,6 +242,7 @@ struct WatchlistListView: View {
 
         // Persist the change (AuthViewModel handles toggling)
         Task { @MainActor in
+            // Use currentProfile context for removal
             await authVM.toggleWatchlist(movieID: movie.id, mediaType: (movie.mediaType ?? "movie"))
         }
     }

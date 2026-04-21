@@ -54,6 +54,8 @@ struct ProfileView: View {
 
     @State private var showingNewListPrompt = false
     @State private var newListName: String = ""
+    @State private var showingAddProfilePrompt = false
+    @State private var newProfileName: String = ""
 
     private let service: MovieServicing = MovieService()
 
@@ -118,11 +120,6 @@ struct ProfileView: View {
                     }
 
                     contentSection
-
-                    Group {
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 12)
                 }
                 .padding(.bottom, 16)
             }
@@ -131,9 +128,23 @@ struct ProfileView: View {
                 EditProfileView()
                     .environmentObject(authVM)
             }
+            .alert("Create Profile", isPresented: $showingAddProfilePrompt) {
+                TextField("Profile name", text: $newProfileName)
+                Button("Cancel", role: .cancel) {
+                    newProfileName = ""
+                }
+                Button("Create") {
+                    Task { await createProfile() }
+                }
+            } message: {
+                Text("Add another profile under the same account.")
+            }
             .onAppear {
                 Task { await loadCurrentList(limitToFive: true) }
-                if let uid = authVM.user?.id { startCustomListsListener(uid: uid) }
+                if let uid = authVM.user?.id, let profileId = authVM.currentProfile?.id {
+                    // Start listening on the custom lists for current user and profile
+                    startCustomListsListener(userId: uid, profileId: profileId)
+                }
             }
             .onChange(of: authVM.listsVersion) { _ in Task { await loadCurrentList(limitToFive: true) } }
             .onChange(of: navPath) { _ in
@@ -144,6 +155,19 @@ struct ProfileView: View {
                 showingNewListPrompt = false
                 newListName = ""
                 stopCustomListsListener()
+            }
+            // Reload data when currentProfile changes
+            .onChange(of: authVM.currentProfile) { newProfile in
+                Task {
+                    await loadCurrentList(limitToFive: true)
+                    // Restart custom lists listener for new profile
+                    stopCustomListsListener()
+                    if let uid = authVM.user?.id, let profileId = newProfile?.id {
+                        startCustomListsListener(userId: uid, profileId: profileId)
+                    } else {
+                        userCustomLists = []
+                    }
+                }
             }
             .navigationDestination(for: ListTab.self) { tab in
                 switch tab {
@@ -300,38 +324,86 @@ struct ProfileView: View {
                             .accessibilityLabel("Edit Profile")
                     }
                     .buttonStyle(.plain)
-                    .disabled(authVM.user == nil)
+                    .disabled(authVM.user == nil || authVM.currentProfile == nil)
                 }
                 .padding()
                 .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             .padding(.horizontal)
 
-            if let u = authVM.user {
+            profileSwitcherSection
+
+            if let profile = authVM.currentProfile {
                 Group {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("My Lists")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.secondary)
+
                         HStack {
                             Label("Favorites", systemImage: "heart.fill").foregroundStyle(.pink)
                             Spacer()
-                            Text("\(u.favoritesEntries.count)").foregroundStyle(.secondary)
+                            Text("\(profile.favoritesEntries.count)")
+                                .foregroundStyle(.secondary)
                         }
+
                         HStack {
                             Label("Watchlist", systemImage: "bookmark.fill").foregroundStyle(.blue)
                             Spacer()
-                            Text("\(u.watchlistEntries.count)").foregroundStyle(.secondary)
+                            Text("\(profile.watchlistEntries.count)")
+                                .foregroundStyle(.secondary)
                         }
+
                         HStack {
                             Label("Watched", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                             Spacer()
-                            Text("\(u.watchedEntries.count)").foregroundStyle(.secondary)
+                            Text("\(profile.watchedEntries.count)")
+                                .foregroundStyle(.secondary)
                         }
+
                         HStack {
                             Label("My Lists", systemImage: "list.bullet").foregroundStyle(.purple)
                             Spacer()
                             Text("\(userCustomLists.count)").foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding()
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .padding(.horizontal)
+            } else {
+                // Show empty placeholders if no currentProfile
+                Group {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("My Lists")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        HStack {
+                            Label("Favorites", systemImage: "heart.fill").foregroundStyle(.pink)
+                            Spacer()
+                            Text("0")
+                                .foregroundStyle(.secondary)
+                        }
+
+                        HStack {
+                            Label("Watchlist", systemImage: "bookmark.fill").foregroundStyle(.blue)
+                            Spacer()
+                            Text("0")
+                                .foregroundStyle(.secondary)
+                        }
+
+                        HStack {
+                            Label("Watched", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                            Spacer()
+                            Text("0")
+                                .foregroundStyle(.secondary)
+                        }
+
+                        HStack {
+                            Label("My Lists", systemImage: "list.bullet").foregroundStyle(.purple)
+                            Spacer()
+                            Text("0").foregroundStyle(.secondary)
                         }
                     }
                     .padding()
@@ -396,6 +468,7 @@ struct ProfileView: View {
                 .padding(.horizontal).padding(.top, 8)
             }
         } else {
+            // Custom Lists Tab
             VStack(alignment: .leading, spacing: 12) {
                 Button {
                     newListName = ""
@@ -498,6 +571,120 @@ struct ProfileView: View {
         }
     }
 
+    private var profileSwitcherSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Profiles")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            if let user = authVM.user, !user.profiles.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 14) {
+                        ForEach(user.profiles) { profile in
+                            Button {
+                                authVM.selectProfile(profile.id)
+                            } label: {
+                                VStack(spacing: 8) {
+                                    profileAvatar(for: profile, isSelected: profile.id == authVM.currentProfile?.id)
+                                    Text(profileName(for: profile))
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+                                        .frame(width: 78)
+                                }
+                                .padding(.vertical, 4)
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        Button {
+                            showingAddProfilePrompt = true
+                        } label: {
+                            VStack(spacing: 8) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color(.secondarySystemBackground))
+                                        .frame(width: 64, height: 64)
+                                    Circle()
+                                        .stroke(Color.accentColor.opacity(0.45), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                                        .frame(width: 64, height: 64)
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 22, weight: .semibold))
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                                Text("New Profile")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(2)
+                                    .frame(width: 78)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(authVM.user == nil)
+                    }
+                }
+            } else {
+                Text("No profile found yet.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal)
+    }
+
+    private func profileName(for profile: Profile) -> String {
+        let trimmedName = profile.displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmedName.isEmpty ? "Profile" : trimmedName
+    }
+
+    @ViewBuilder
+    private func profileAvatar(for profile: Profile, isSelected: Bool) -> some View {
+        if let urlStr = profile.photoURL {
+            if urlStr.hasPrefix("avatar://") {
+                let id = String(urlStr.dropFirst("avatar://".count))
+                Image(id)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 64, height: 64)
+                    .clipShape(Circle())
+                    .overlay {
+                        Circle()
+                            .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 3)
+                    }
+            } else if let url = URL(string: urlStr) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        Circle().fill(Color(.tertiarySystemFill))
+                            .frame(width: 64, height: 64)
+                            .overlay { CustomLoadingView() }
+                    case .success(let img):
+                        img.resizable()
+                            .scaledToFill()
+                            .frame(width: 64, height: 64)
+                            .clipShape(Circle())
+                            .overlay {
+                                Circle()
+                                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 3)
+                            }
+                    case .failure:
+                        profilePlaceholder(isSelected: isSelected)
+                    @unknown default:
+                        profilePlaceholder(isSelected: isSelected)
+                    }
+                }
+            } else {
+                profilePlaceholder(isSelected: isSelected)
+            }
+        } else {
+            profilePlaceholder(isSelected: isSelected)
+        }
+    }
+
     private func row(for movie: Movie) -> some View {
         HStack(spacing: 12) {
             poster(for: movie)
@@ -566,26 +753,32 @@ struct ProfileView: View {
     // MARK: - Typed entries helpers
 
     private func currentFavoriteEntries() -> [WatchedEntry] {
-        guard let u = authVM.user else { return [] }
-        return u.favoritesEntries
+        // Use currentProfile favoritesEntries only (migration complete)
+        return authVM.currentProfile?.favoritesEntries ?? []
     }
 
     private func currentWatchlistEntries() -> [WatchedEntry] {
-        guard let u = authVM.user else { return [] }
-        return u.watchlistEntries
+        // Use currentProfile watchlistEntries only (migration complete)
+        return authVM.currentProfile?.watchlistEntries ?? []
     }
 
     private func currentWatchedEntries() -> [WatchedEntry] {
-        guard let u = authVM.user else { return [] }
-        return u.watchedEntries
+        // Use currentProfile watchedEntries only (migration complete)
+        return authVM.currentProfile?.watchedEntries ?? []
     }
 
     // MARK: - Firestore Custom Lists
 
-    private func startCustomListsListener(uid: String) {
+    private func startCustomListsListener(userId: String, profileId: String) {
+        Task {
+            await migrateLegacyCustomListsIfNeeded(userId: userId, profileId: profileId)
+        }
+
         let ref = Firestore.firestore()
             .collection("users")
-            .document(uid)
+            .document(userId)
+            .collection("profiles")
+            .document(profileId)
             .collection("lists")
             .order(by: "createdAt", descending: false)
         listsListener = ref.addSnapshotListener { snapshot, error in
@@ -602,16 +795,64 @@ struct ProfileView: View {
         }
     }
 
+    private func migrateLegacyCustomListsIfNeeded(userId: String, profileId: String) async {
+        let db = Firestore.firestore()
+        let userDocRef = db.collection("users").document(userId)
+        let legacyListsRef = db.collection("users").document(userId).collection("lists")
+        let profileListsRef = db.collection("users").document(userId)
+            .collection("profiles").document(profileId)
+            .collection("lists")
+
+        do {
+            let userDoc = try await userDocRef.getDocument()
+            if userDoc.data()?["legacyCustomListsMigratedProfileID"] as? String != nil {
+                return
+            }
+
+            let legacySnapshot = try await legacyListsRef.getDocuments()
+            guard !legacySnapshot.documents.isEmpty else { return }
+
+            for legacyDoc in legacySnapshot.documents {
+                let targetDoc = profileListsRef.document(legacyDoc.documentID)
+                let targetSnapshot = try await targetDoc.getDocument()
+
+                if !targetSnapshot.exists {
+                    try await targetDoc.setData(legacyDoc.data(), merge: true)
+                }
+
+                let legacyItems = try await legacyDoc.reference.collection("items").getDocuments()
+                for itemDoc in legacyItems.documents {
+                    try await targetDoc.collection("items").document(itemDoc.documentID).setData(itemDoc.data(), merge: true)
+                }
+            }
+
+            try await userDocRef.setData([
+                "legacyCustomListsMigratedProfileID": profileId
+            ], merge: true)
+        } catch {
+            print("[Profile Lists] migration error:", error.localizedDescription)
+        }
+    }
+
     private func stopCustomListsListener() {
         listsListener?.remove()
         listsListener = nil
+        userCustomLists = []
+    }
+
+    private func createProfile() async {
+        let trimmedName = newProfileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+        await authVM.addProfile(displayName: trimmedName, photoURL: nil)
+        newProfileName = ""
     }
 
     // MARK: - Create Custom List
     private func createNewCustomList(name: String) async {
-        guard let uid = authVM.user?.id else { return }
+        guard let uid = authVM.user?.id, let profileId = authVM.currentProfile?.id else { return }
         let db = Firestore.firestore()
-        let listsRef = db.collection("users").document(uid).collection("lists")
+        // Firestore path updated to nested profiles under user
+        let listsRef = db.collection("users").document(uid).collection("profiles").document(profileId).collection("lists")
         let newDoc = listsRef.document()
         let payload: [String: Any] = [
             "name": name,
@@ -625,9 +866,10 @@ struct ProfileView: View {
     }
 
     private func deleteCustomList(listID: String) async {
-        guard let uid = authVM.user?.id else { return }
+        guard let uid = authVM.user?.id, let profileId = authVM.currentProfile?.id else { return }
         let db = Firestore.firestore()
-        let docRef = db.collection("users").document(uid).collection("lists").document(listID)
+        // Firestore path updated to nested profiles under user
+        let docRef = db.collection("users").document(uid).collection("profiles").document(profileId).collection("lists").document(listID)
         do {
             try await docRef.delete()
         } catch {
@@ -641,6 +883,11 @@ struct ProfileView: View {
         errorMessage = nil
         isLoading = true
         defer { isLoading = false }
+
+        guard authVM.currentProfile != nil else {
+            movies = []
+            return
+        }
 
         switch selectedTab {
         case .favorites:
@@ -742,20 +989,22 @@ struct ProfileView: View {
     }
 
     private var showAllButton: Bool {
-        guard let u = authVM.user else { return false }
+        // Use currentProfile counts only (no fallback)
+        guard let profile = authVM.currentProfile else { return false }
         switch selectedTab {
         case .favorites:
-            return u.favoritesEntries.count > 5
+            return profile.favoritesEntries.count > 5
         case .watchlist:
-            return u.watchlistEntries.count > 5
+            return profile.watchlistEntries.count > 5
         case .watched:
-            return u.watchedEntries.count > 5
+            return profile.watchedEntries.count > 5
         case .custom:
             return false
         }
     }
 
     private func removeFromCurrentList(movieID: Int, mediaType: String?) async {
+        guard authVM.currentProfile != nil else { return }
         switch selectedTab {
         case .favorites:
             await authVM.toggleFavorite(movieID: movieID, mediaType: mediaType ?? "movie")
@@ -771,17 +1020,21 @@ struct ProfileView: View {
     }
 
     private var displayName: String {
-        if let n = authVM.user?.displayName, !n.isEmpty { return n }
+        // Use currentProfile displayName only (no fallback)
+        if let name = authVM.currentProfile?.displayName, !name.isEmpty { return name }
         return "User"
     }
 
     private var email: String {
-        authVM.user?.email ?? "-"
+        // Email is only on user, profile does not have email
+        // Show user's email if exists, else fallback to "-"
+        return authVM.user?.email ?? "-"
     }
 
     @ViewBuilder
     private var profileAvatar: some View {
-        if let urlStr = authVM.user?.photoURL {
+        // Use currentProfile photoURL only (no fallback)
+        if let urlStr = authVM.currentProfile?.photoURL {
             if urlStr.hasPrefix("avatar://") {
                 let id = String(urlStr.dropFirst("avatar://".count))
                 Image(id)
@@ -811,17 +1064,26 @@ struct ProfileView: View {
                 profilePlaceholder
             }
         } else {
+            // No avatar to show
             profilePlaceholder
         }
     }
 
     private var profilePlaceholder: some View {
+        profilePlaceholder(isSelected: false)
+    }
+
+    private func profilePlaceholder(isSelected: Bool) -> some View {
         Circle()
             .fill(Color(.tertiarySystemFill))
-            .frame(width: 56, height: 56)
+            .frame(width: 64, height: 64)
             .overlay {
                 Image(systemName: "person.fill")
                     .foregroundStyle(.secondary)
+            }
+            .overlay {
+                Circle()
+                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 3)
             }
     }
 }
@@ -830,4 +1092,3 @@ struct ProfileView: View {
     ProfileView()
         .environmentObject(AuthViewModel())
 }
-

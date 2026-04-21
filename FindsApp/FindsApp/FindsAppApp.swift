@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Combine
 import FirebaseCore
 
 enum ThemePreference: String, CaseIterable, Identifiable {
@@ -32,6 +33,22 @@ enum ThemePreference: String, CaseIterable, Identifiable {
   }
 }
 
+@MainActor
+final class ThemeStore: ObservableObject {
+  @Published var preference: ThemePreference {
+    didSet {
+      UserDefaults.standard.set(preference.rawValue, forKey: Self.storageKey)
+    }
+  }
+
+  private static let storageKey = "themePreference"
+
+  init() {
+    let storedValue = UserDefaults.standard.string(forKey: Self.storageKey)
+    self.preference = ThemePreference(rawValue: storedValue ?? "") ?? .system
+  }
+}
+
 class AppDelegate: NSObject, UIApplicationDelegate {
   func application(_ application: UIApplication,
                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
@@ -44,13 +61,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 struct YourApp: App {
   @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
 
-  @AppStorage("themePreference") private var themePreferenceRaw: String = ThemePreference.system.rawValue
-
   @StateObject private var authVM = AuthViewModel()
-
-  private var themePreference: ThemePreference {
-    ThemePreference(rawValue: themePreferenceRaw) ?? .system
-  }
+  @StateObject private var themeStore = ThemeStore()
 
   var body: some Scene {
     WindowGroup {
@@ -61,8 +73,9 @@ struct YourApp: App {
           AuthView()
         }
       }
-      .preferredColorScheme(themePreference.colorScheme)
+      .preferredColorScheme(themeStore.preference.colorScheme)
       .environmentObject(authVM)
+      .environmentObject(themeStore)
     }
   }
 }

@@ -30,10 +30,10 @@
             filePath = "FindsApp/ProfileView.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "566"
-            endingLineNumber = "566"
-            landmarkName = "ProfileView"
-            landmarkType = "14">
+            startingLineNumber = "629"
+            endingLineNumber = "629"
+            landmarkName = "startCustomListsListener(uid:)"
+            landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
    </Breakpoints>

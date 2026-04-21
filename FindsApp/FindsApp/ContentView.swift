@@ -51,7 +51,7 @@ struct ContentView: View {
 
     private var welcomeTitle: String {
         let nickname: String = {
-            if let name = authVM.user?.displayName, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let name = authVM.currentProfile?.displayName, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return name
             }
             if let email = authVM.user?.email, let at = email.firstIndex(of: "@") {

@@ -11,6 +11,7 @@ struct StarRatingView: View {
     let starSize: CGFloat
     let maxRating: Int = 5
     var onRatingChanged: ((Double) -> Void)? = nil
+    private let starSpacingRatio: CGFloat = 0.1667
 
     init(rating: Binding<Double>, starSize: CGFloat = 100, onRatingChanged: ((Double) -> Void)? = nil) {
         self._rating = rating
@@ -21,21 +22,25 @@ struct StarRatingView: View {
     @GestureState private var dragLocation: CGPoint = .zero
 
     var body: some View {
+        let itemSpacing = starSize * starSpacingRatio
+        let totalWidth = (CGFloat(maxRating) * starSize) + (CGFloat(maxRating - 1) * itemSpacing)
+
         GeometryReader { geo in
-            HStack(spacing: 0) {
+            HStack(spacing: itemSpacing) {
                 ForEach(0..<maxRating, id: \.self) { idx in
-                    star(for: idx)
+                    ratingCircle(for: idx)
                         .frame(width: starSize, height: starSize)
-                        .padding(.horizontal, -starSize * 0.08)
                 }
             }
             .contentShape(Rectangle())
+            .frame(width: totalWidth, alignment: .center)
             .frame(maxWidth: .infinity, alignment: .center)
             .gesture(DragGesture(minimumDistance: 0)
                 .onChanged { value in
-                    let widthPerStar = geo.size.width / CGFloat(maxRating)
-                    let position = min(max(value.location.x, 0), geo.size.width)
-                    let raw = position / widthPerStar
+                    let horizontalInset = max((geo.size.width - totalWidth) / 2, 0)
+                    let position = min(max(value.location.x - horizontalInset, 0), totalWidth)
+                    let widthPerItem = totalWidth / CGFloat(maxRating)
+                    let raw = position / widthPerItem
                     let stepped = (raw * 2).rounded() / 2 // round to nearest 0.5
                     let newRating = min(max(stepped, 0), Double(maxRating))
                     if rating != newRating {
@@ -49,14 +54,35 @@ struct StarRatingView: View {
     }
 
     @ViewBuilder
-    private func star(for idx: Int) -> some View {
+    private func ratingCircle(for idx: Int) -> some View {
         let full = Double(idx + 1)
         if rating >= full {
-            Image(systemName: "star.fill").foregroundStyle(.yellow)
+            Circle()
+                .fill(Color.yellow)
         } else if rating >= full - 0.5 {
-            Image(systemName: "star.leadinghalf.filled").foregroundStyle(.yellow)
+            ZStack {
+                Circle()
+                    .fill(Color(.secondarySystemFill))
+
+                GeometryReader { geo in
+                    Circle()
+                        .fill(Color.yellow)
+                        .mask(alignment: .leading) {
+                            Rectangle()
+                                .frame(width: geo.size.width / 2)
+                        }
+                }
+
+                Circle()
+                    .stroke(Color.yellow.opacity(0.55), lineWidth: max(3, starSize * 0.08))
+            }
         } else {
-            Image(systemName: "star").foregroundStyle(.gray)
+            Circle()
+                .stroke(Color.yellow.opacity(0.55), lineWidth: max(3, starSize * 0.08))
+                .background(
+                    Circle()
+                        .fill(Color(.secondarySystemFill))
+                )
         }
     }
 }
@@ -157,11 +183,23 @@ struct MovieDetailView: View {
         )
         .sheet(isPresented: $isShowingRatingSheet) {
             VStack(spacing: 16) {
-                Text("Rate \(movie.title)").font(.headline)
-                StarRatingView(rating: $tempRating, starSize: 80) { newValue in
+                Spacer()
+                    .frame(height: 20)
+
+                Text(movie.title)
+                    .font(.title3.weight(.bold))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                    .frame(maxWidth: .infinity)
+
+                Text("Rate this title")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                StarRatingView(rating: $tempRating, starSize: 48) { newValue in
                     // live preview inside sheet
                 }
-                .frame(height: 110)
+                .frame(height: 58)
                 HStack(spacing: 12) {
                     Button("Cancel") { isShowingRatingSheet = false }
                         .buttonStyle(.bordered)
@@ -194,7 +232,7 @@ struct MovieDetailView: View {
                 Spacer(minLength: 0)
             }
             .padding()
-            .presentationDetents([.height(240), .medium])
+            .presentationDetents([.height(255), .medium])
         }
         .sheet(isPresented: $isShowingListsSheet) {
             NavigationStack {
@@ -269,8 +307,8 @@ struct MovieDetailView: View {
                                             } else {
                                                 selectedLists.insert(list.id)
                                             }
-                                            if let uid = authVM.user?.id {
-                                                Task { await saveSelections(uid: uid) }
+                                            if let uid = authVM.user?.id, let profileId = authVM.currentProfile?.id {
+                                                Task { await saveSelections(uid: uid, profileId: profileId) }
                                             }
                                         }
                                         Divider().padding(.leading, 48)
@@ -288,7 +326,9 @@ struct MovieDetailView: View {
                                 .textFieldStyle(.roundedBorder)
                             Button("Add") {
                                 Task {
-                                    if let uid = authVM.user?.id { await addNewList(uid: uid, name: newListName) }
+                                    if let uid = authVM.user?.id, let profileId = authVM.currentProfile?.id {
+                                        await addNewList(uid: uid, profileId: profileId, name: newListName)
+                                    }
                                     newListName = ""
                                 }
                             }
@@ -305,7 +345,9 @@ struct MovieDetailView: View {
                         Spacer()
                         Button("Save") {
                             Task {
-                                if let uid = authVM.user?.id { await saveSelections(uid: uid) }
+                                if let uid = authVM.user?.id, let profileId = authVM.currentProfile?.id {
+                                    await saveSelections(uid: uid, profileId: profileId)
+                                }
                                 isShowingListsSheet = false
                             }
                         }
@@ -317,15 +359,19 @@ struct MovieDetailView: View {
                 }
                 .navigationTitle("Lists")
                 .navigationBarTitleDisplayMode(.inline)
-                .onAppear { if let uid = authVM.user?.id { startListsListener(uid: uid) } }
+                .onAppear {
+                    if let uid = authVM.user?.id, let profileId = authVM.currentProfile?.id {
+                        startListsListener(uid: uid, profileId: profileId)
+                    }
+                }
                 .onDisappear { stopListsListener() }
                 .alert("Delete list?", isPresented: Binding(
                     get: { listPendingDeletion != nil },
                     set: { if !$0 { listPendingDeletion = nil } }
                 )) {
                     Button("Delete", role: .destructive) {
-                        if let uid = authVM.user?.id, let pending = listPendingDeletion {
-                            Task { await deleteList(uid: uid, listID: pending.id) }
+                        if let uid = authVM.user?.id, let profileId = authVM.currentProfile?.id, let pending = listPendingDeletion {
+                            Task { await deleteList(uid: uid, profileId: profileId, listID: pending.id) }
                         }
                         listPendingDeletion = nil
                     }
@@ -342,8 +388,8 @@ struct MovieDetailView: View {
             .presentationDragIndicator(.visible)
         }
         .onAppear {
-            if let uid = authVM.user?.id {
-                startListsListener(uid: uid)
+            if let uid = authVM.user?.id, let profileId = authVM.currentProfile?.id {
+                startListsListener(uid: uid, profileId: profileId)
             }
         }
         .onDisappear {
@@ -390,19 +436,19 @@ struct MovieDetailView: View {
     }
 
     private var isFavorite: Bool {
-        guard let profile = authVM.user else { return false }
+        guard let profile = authVM.currentProfile else { return false }
         let type = (movie.mediaType ?? "movie").lowercased()
         return profile.favoritesEntries.contains { $0.id == movie.id && $0.type.lowercased() == type }
     }
 
     private var isInWatchlist: Bool {
-        guard let profile = authVM.user else { return false }
+        guard let profile = authVM.currentProfile else { return false }
         let type = (movie.mediaType ?? "movie").lowercased()
         return profile.watchlistEntries.contains { $0.id == movie.id && $0.type.lowercased() == type }
     }
 
     private var isWatched: Bool {
-        guard let profile = authVM.user else { return false }
+        guard let profile = authVM.currentProfile else { return false }
         let type = (movie.mediaType ?? "movie").lowercased()
         return profile.watchedEntries.contains { $0.id == movie.id && $0.type.lowercased() == type }
     }
@@ -567,10 +613,16 @@ struct MovieDetailView: View {
         }
     }
 
-    private func startListsListener(uid: String) {
+    private func startListsListener(uid: String, profileId: String) {
+        Task {
+            await migrateLegacyListsIfNeeded(uid: uid, profileId: profileId)
+        }
+
         let ref = Firestore.firestore()
             .collection("users")
             .document(uid)
+            .collection("profiles")
+            .document(profileId)
             .collection("lists")
             .order(by: "createdAt", descending: false)
         listsListener = ref.addSnapshotListener { snapshot, error in
@@ -585,7 +637,46 @@ struct MovieDetailView: View {
             }
             self.userLists = lists
             // Preload selections for this movie in user's lists
-            Task { await loadSelections(uid: uid) }
+            Task { await loadSelections(uid: uid, profileId: profileId) }
+        }
+    }
+
+    private func migrateLegacyListsIfNeeded(uid: String, profileId: String) async {
+        let db = Firestore.firestore()
+        let userDocRef = db.collection("users").document(uid)
+        let legacyListsRef = db.collection("users").document(uid).collection("lists")
+        let profileListsRef = db.collection("users").document(uid)
+            .collection("profiles").document(profileId)
+            .collection("lists")
+
+        do {
+            let userDoc = try await userDocRef.getDocument()
+            if userDoc.data()?["legacyCustomListsMigratedProfileID"] as? String != nil {
+                return
+            }
+
+            let legacySnapshot = try await legacyListsRef.getDocuments()
+            guard !legacySnapshot.documents.isEmpty else { return }
+
+            for legacyDoc in legacySnapshot.documents {
+                let targetDoc = profileListsRef.document(legacyDoc.documentID)
+                let targetSnapshot = try await targetDoc.getDocument()
+
+                if !targetSnapshot.exists {
+                    try await targetDoc.setData(legacyDoc.data(), merge: true)
+                }
+
+                let legacyItems = try await legacyDoc.reference.collection("items").getDocuments()
+                for itemDoc in legacyItems.documents {
+                    try await targetDoc.collection("items").document(itemDoc.documentID).setData(itemDoc.data(), merge: true)
+                }
+            }
+
+            try await userDocRef.setData([
+                "legacyCustomListsMigratedProfileID": profileId
+            ], merge: true)
+        } catch {
+            print("[Lists] migration error:", error.localizedDescription)
         }
     }
 
@@ -594,12 +685,13 @@ struct MovieDetailView: View {
         listsListener = nil
     }
 
-    private func loadSelections(uid: String) async {
+    private func loadSelections(uid: String, profileId: String) async {
         let type = (movie.mediaType ?? "movie").lowercased()
         let db = Firestore.firestore()
         var newSelected: Set<String> = []
         for list in userLists {
             let itemRef = db.collection("users").document(uid)
+                .collection("profiles").document(profileId)
                 .collection("lists").document(list.id)
                 .collection("items").document("\(type):\(movie.id)")
             do {
@@ -612,12 +704,14 @@ struct MovieDetailView: View {
         await MainActor.run { self.selectedLists = newSelected }
     }
 
-    private func addNewList(uid: String, name: String) async {
+    private func addNewList(uid: String, profileId: String, name: String) async {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let db = Firestore.firestore()
         do {
-            let ref = db.collection("users").document(uid).collection("lists").document()
+            let ref = db.collection("users").document(uid)
+                .collection("profiles").document(profileId)
+                .collection("lists").document()
             try await ref.setData([
                 "name": trimmed,
                 "createdAt": FieldValue.serverTimestamp()
@@ -627,12 +721,13 @@ struct MovieDetailView: View {
         }
     }
 
-    private func saveSelections(uid: String) async {
+    private func saveSelections(uid: String, profileId: String) async {
         let type = (movie.mediaType ?? "movie").lowercased()
         let db = Firestore.firestore()
         let key = "\(type):\(movie.id)"
         for list in userLists {
             let itemRef = db.collection("users").document(uid)
+                .collection("profiles").document(profileId)
                 .collection("lists").document(list.id)
                 .collection("items").document(key)
             do {
@@ -651,10 +746,12 @@ struct MovieDetailView: View {
         }
     }
 
-    private func deleteList(uid: String, listID: String) async {
+    private func deleteList(uid: String, profileId: String, listID: String) async {
         let db = Firestore.firestore()
         do {
-            try await db.collection("users").document(uid).collection("lists").document(listID).delete()
+            try await db.collection("users").document(uid)
+                .collection("profiles").document(profileId)
+                .collection("lists").document(listID).delete()
             await MainActor.run { self.selectedLists.remove(listID) }
         } catch {
             print("[Lists] delete error for list=\(listID):", error.localizedDescription)
@@ -823,4 +920,3 @@ struct MovieDetailView: View {
             .environmentObject(AuthViewModel())
     }
 }
-
