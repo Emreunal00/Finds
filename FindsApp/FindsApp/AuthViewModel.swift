@@ -384,6 +384,96 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
+    func toggleWantToReadBook(movieID: Int, externalContentID: String? = nil) async {
+        guard let uid = service.currentUID, var user = self.user else {
+            self.errorMessage = "No active session."
+            return
+        }
+        guard let profile = currentProfile else {
+            self.errorMessage = "No active profile."
+            return
+        }
+
+        let entry = WatchedEntry(id: movieID, type: "book", externalID: externalContentID)
+        let repo = UserProfileRepository()
+        var updatedUser = user
+
+        if let idx = profile.booksWantToReadEntries.firstIndex(where: { $0.id == movieID && $0.type.lowercased() == "book" }) {
+            do {
+                updatedUser.profiles = updatedUser.profiles.map { p in
+                    guard p.id == profile.id else { return p }
+                    var copy = p
+                    copy.booksWantToReadEntries.remove(at: idx)
+                    return copy
+                }
+                try await repo.createOrMerge(updatedUser)
+                self.user = updatedUser
+                self.listsVersion &+= 1
+            } catch {
+                self.errorMessage = error.localizedDescription
+            }
+        } else {
+            do {
+                updatedUser.profiles = updatedUser.profiles.map { p in
+                    guard p.id == profile.id else { return p }
+                    var copy = p
+                    copy.booksWantToReadEntries.append(entry)
+                    return copy
+                }
+                try await repo.createOrMerge(updatedUser)
+                self.user = updatedUser
+                self.listsVersion &+= 1
+            } catch {
+                self.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func toggleReadBook(movieID: Int, externalContentID: String? = nil) async {
+        guard let uid = service.currentUID, var user = self.user else {
+            self.errorMessage = "No active session."
+            return
+        }
+        guard let profile = currentProfile else {
+            self.errorMessage = "No active profile."
+            return
+        }
+
+        let entry = WatchedEntry(id: movieID, type: "book", externalID: externalContentID)
+        let repo = UserProfileRepository()
+        var updatedUser = user
+
+        if let idx = profile.booksReadEntries.firstIndex(where: { $0.id == movieID && $0.type.lowercased() == "book" }) {
+            do {
+                updatedUser.profiles = updatedUser.profiles.map { p in
+                    guard p.id == profile.id else { return p }
+                    var copy = p
+                    copy.booksReadEntries.remove(at: idx)
+                    return copy
+                }
+                try await repo.createOrMerge(updatedUser)
+                self.user = updatedUser
+                self.listsVersion &+= 1
+            } catch {
+                self.errorMessage = error.localizedDescription
+            }
+        } else {
+            do {
+                updatedUser.profiles = updatedUser.profiles.map { p in
+                    guard p.id == profile.id else { return p }
+                    var copy = p
+                    copy.booksReadEntries.append(entry)
+                    return copy
+                }
+                try await repo.createOrMerge(updatedUser)
+                self.user = updatedUser
+                self.listsVersion &+= 1
+            } catch {
+                self.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
     func toggleWatched(movieID: Int, type: String, externalContentID: String? = nil) async {
         guard let uid = service.currentUID, var user = self.user else {
             self.errorMessage = "No active session."

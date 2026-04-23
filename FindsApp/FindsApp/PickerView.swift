@@ -253,7 +253,13 @@ struct PickerView: View {
                 let type = (movie.mediaType ?? "movie").lowercased()
                 let key = "\(type):\(movie.id)"
                 if localWatched.contains(key) { localWatched.remove(key) } else { localWatched.insert(key) }
-                Task { await authVM.toggleWatched(movieID: movie.id, type: type, externalContentID: movie.externalContentID) }
+                Task {
+                    if movie.isBook {
+                        await authVM.toggleReadBook(movieID: movie.id, externalContentID: movie.externalContentID)
+                    } else {
+                        await authVM.toggleWatched(movieID: movie.id, type: type, externalContentID: movie.externalContentID)
+                    }
+                }
             } label: {
                 Label(watchedLabel, systemImage: isWatched ? "checkmark.circle.fill" : "checkmark.circle")
                     .labelStyle(.titleAndIcon)
@@ -269,7 +275,13 @@ struct PickerView: View {
                 let type = (movie.mediaType ?? "movie").lowercased()
                 let key = "\(type):\(movie.id)"
                 if localWatchlist.contains(key) { localWatchlist.remove(key) } else { localWatchlist.insert(key) }
-                Task { await authVM.toggleWatchlist(movieID: movie.id, mediaType: type, externalContentID: movie.externalContentID) }
+                Task {
+                    if movie.isBook {
+                        await authVM.toggleWantToReadBook(movieID: movie.id, externalContentID: movie.externalContentID)
+                    } else {
+                        await authVM.toggleWatchlist(movieID: movie.id, mediaType: type, externalContentID: movie.externalContentID)
+                    }
+                }
             } label: {
                 Label(watchlistLabel, systemImage: isInWatchlist ? "bookmark.fill" : "bookmark")
                     .labelStyle(.titleAndIcon)
@@ -1140,8 +1152,14 @@ struct PickerView: View {
                 }
                 await MainActor.run {
                     if let user = authVM.user, let profile = authVM.currentProfile {
-                        self.localWatched = Set(profile.watchedEntries.map { "\($0.type.lowercased()):\($0.id)" })
-                        self.localWatchlist = Set(profile.watchlistEntries.map { "\($0.type.lowercased()):\($0.id)" })
+                        self.localWatched = Set(
+                            profile.watchedEntries.map { "\($0.type.lowercased()):\($0.id)" } +
+                            profile.booksReadEntries.map { "\($0.type.lowercased()):\($0.id)" }
+                        )
+                        self.localWatchlist = Set(
+                            profile.watchlistEntries.map { "\($0.type.lowercased()):\($0.id)" } +
+                            profile.booksWantToReadEntries.map { "\($0.type.lowercased()):\($0.id)" }
+                        )
                         self.localFavorites = Set(profile.favoritesEntries.map { "\($0.type.lowercased()):\($0.id)" })
                         self.currentProfileId = profile.id
                     } else {

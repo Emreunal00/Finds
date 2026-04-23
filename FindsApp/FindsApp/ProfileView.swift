@@ -363,7 +363,7 @@ struct ProfileView: View {
                         HStack {
                             Label("Want to Read", systemImage: "book.pages.fill").foregroundStyle(.blue)
                             Spacer()
-                            Text("\(profile.watchlistEntries.filter { $0.type.lowercased() == "book" }.count)")
+                            Text("\(profile.booksWantToReadEntries.count)")
                                 .foregroundStyle(.secondary)
                         }
 
@@ -377,7 +377,7 @@ struct ProfileView: View {
                         HStack {
                             Label("Read", systemImage: "book.fill").foregroundStyle(.green)
                             Spacer()
-                            Text("\(profile.watchedEntries.filter { $0.type.lowercased() == "book" }.count)")
+                            Text("\(profile.booksReadEntries.count)")
                                 .foregroundStyle(.secondary)
                         }
 
@@ -816,11 +816,11 @@ struct ProfileView: View {
     }
 
     private func currentWantToReadEntries() -> [WatchedEntry] {
-        currentWatchlistEntries().filter { $0.type.lowercased() == "book" }
+        authVM.currentProfile?.booksWantToReadEntries ?? []
     }
 
     private func currentReadBookEntries() -> [WatchedEntry] {
-        currentWatchedEntries().filter { $0.type.lowercased() == "book" }
+        authVM.currentProfile?.booksReadEntries ?? []
     }
 
     private func fetchMediaItems(from entries: [WatchedEntry]) async -> [Movie] {
@@ -1030,9 +1030,9 @@ struct ProfileView: View {
             let type = mediaType ?? "movie"
             await authVM.toggleWatched(movieID: movieID, type: type)
         case .wantToReadBooks:
-            await authVM.toggleWatchlist(movieID: movieID, mediaType: mediaType ?? "book")
+            await authVM.toggleWantToReadBook(movieID: movieID)
         case .readBooks:
-            await authVM.toggleWatched(movieID: movieID, type: mediaType ?? "book")
+            await authVM.toggleReadBook(movieID: movieID)
         case .custom:
             break
         }

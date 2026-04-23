@@ -84,14 +84,14 @@ struct BookDetailView: View {
         return profile.favoritesEntries.contains { $0.id == book.id && $0.type.lowercased() == "book" }
     }
 
-    private var isInWatchlist: Bool {
+    private var isInWantToRead: Bool {
         guard let profile = authVM.currentProfile else { return false }
-        return profile.watchlistEntries.contains { $0.id == book.id && $0.type.lowercased() == "book" }
+        return profile.booksWantToReadEntries.contains { $0.id == book.id && $0.type.lowercased() == "book" }
     }
 
-    private var isWatched: Bool {
+    private var isRead: Bool {
         guard let profile = authVM.currentProfile else { return false }
-        return profile.watchedEntries.contains { $0.id == book.id && $0.type.lowercased() == "book" }
+        return profile.booksReadEntries.contains { $0.id == book.id && $0.type.lowercased() == "book" }
     }
 
     private var isRated: Bool {
@@ -194,22 +194,22 @@ struct BookDetailView: View {
             .tint(isFavorite ? .pink : .secondary)
 
             Button {
-                Task { await authVM.toggleWatchlist(movieID: book.id, mediaType: "book", externalContentID: book.externalContentID) }
+                Task { await authVM.toggleWantToReadBook(movieID: book.id, externalContentID: book.externalContentID) }
             } label: {
-                Label("Want to Read", systemImage: isInWatchlist ? "bookmark.fill" : "bookmark")
+                Label("Want to Read", systemImage: isInWantToRead ? "bookmark.fill" : "bookmark")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .tint(isInWatchlist ? .blue : .secondary)
+            .tint(isInWantToRead ? .blue : .secondary)
 
             Button {
-                Task { await authVM.toggleWatched(movieID: book.id, type: "book", externalContentID: book.externalContentID) }
+                Task { await authVM.toggleReadBook(movieID: book.id, externalContentID: book.externalContentID) }
             } label: {
-                Label("Read", systemImage: isWatched ? "checkmark.circle.fill" : "checkmark.circle")
+                Label("Read", systemImage: isRead ? "checkmark.circle.fill" : "checkmark.circle")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .tint(isWatched ? .green : .secondary)
+            .tint(isRead ? .green : .secondary)
 
             Button {
                 isShowingListsSheet = true
