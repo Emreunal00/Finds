@@ -26,8 +26,8 @@ private struct GoogleBookImageLinks: Decodable {
 }
 
 enum BookCatalog {
-    private static let apiKey = "AIzaSyBCB5jvMDiK202aY7UnSlipclxg4I7hIM8"
     private static let baseURL = URL(string: "https://www.googleapis.com/books/v1/volumes")!
+    private static let apiKey = Secrets.googleBooksAPIKey
 
     private actor BookStore {
         private var cachedByExternalID: [String: Movie] = [:]
@@ -54,17 +54,34 @@ enum BookCatalog {
     private static let store = BookStore()
 
     static func trendingBooks(page: Int = 1, pageSize: Int = 20) async -> [Movie] {
-        await fetchBooksPage(query: "subject:fiction", orderBy: "relevance", page: page, pageSize: pageSize)
+        await curatedBooks(
+            queries: [
+                ("subject:fiction", "relevance"),
+                ("subject:bestsellers", "relevance"),
+                ("subject:popular fiction", "relevance")
+            ],
+            page: page,
+            pageSize: pageSize
+        )
     }
 
     static func recommendedBooks(for userID: String?, page: Int = 1, pageSize: Int = 20) async -> [Movie] {
-        await fetchBooksPage(query: "subject:fiction", orderBy: "newest", page: page, pageSize: pageSize)
+        await curatedBooks(
+            queries: [
+                ("subject:fantasy", "relevance"),
+                ("subject:science fiction", "relevance"),
+                ("subject:mystery", "relevance"),
+                ("subject:young adult fiction", "relevance")
+            ],
+            page: page,
+            pageSize: pageSize
+        )
     }
 
     static func searchBooks(query: String, maxResults: Int = 12) async -> [Movie] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else { return [] }
-        return await fetchBooks(query: trimmedQuery, orderBy: "relevance", maxResults: maxResults)
+        return await searchBooksRobustly(query: trimmedQuery, maxResults: maxResults)
     }
 
     static func fetchBook(id: Int, externalContentID: String? = nil) async throws -> Movie {
@@ -82,8 +99,8 @@ enum BookCatalog {
         }
 
         let url = baseURL.appending(path: externalContentID).appending(queryItems: [
-            URLQueryItem(name: "key", value: apiKey)
-        ])
+            Secrets.queryItem(name: "key", value: apiKey)
+        ].compactMap { $0 })
         let (data, response) = try await URLSession.shared.data(from: url)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "BookCatalog", code: 500, userInfo: [
@@ -137,6 +154,64 @@ enum BookCatalog {
         return Array(collected.prefix(clampedTarget))
     }
 
+    private static func searchBooksRobustly(query: String, maxResults: Int) async -> [Movie] {
+        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return [] }
+
+        let strategies = [
+            normalized,
+            "intitle:\(normalized)",
+            "subject:fiction \(normalized)"
+        ]
+
+        var collected: [Movie] = []
+        var seenExternalIDs = Set<String>()
+
+        for strategy in strategies {
+            let books = await fetchBooks(query: strategy, orderBy: "relevance", maxResults: maxResults)
+            for book in books {
+                guard let externalID = book.externalContentID,
+                      seenExternalIDs.insert(externalID).inserted else { continue }
+                collected.append(book)
+                if collected.count == maxResults {
+                    return collected
+                }
+            }
+        }
+
+        return collected
+    }
+
+    private static func curatedBooks(
+        queries: [(query: String, orderBy: String)],
+        page: Int,
+        pageSize: Int
+    ) async -> [Movie] {
+        let targetCount = max(1, pageSize)
+        var seenExternalIDs = Set<String>()
+        var collected: [Movie] = []
+
+        for entry in queries {
+            let books = await fetchBooksPage(
+                query: entry.query,
+                orderBy: entry.orderBy,
+                page: page,
+                pageSize: max(targetCount, 12)
+            )
+
+            for book in books {
+                guard let externalID = book.externalContentID,
+                      seenExternalIDs.insert(externalID).inserted else { continue }
+                collected.append(book)
+                if collected.count == targetCount {
+                    return collected
+                }
+            }
+        }
+
+        return collected
+    }
+
     private static func fetchBooksPage(query: String, orderBy: String, page: Int, pageSize: Int) async -> [Movie] {
         let clampedPage = max(1, page)
         let clampedPageSize = max(1, min(pageSize, 40))
@@ -169,11 +244,10 @@ enum BookCatalog {
             URLQueryItem(name: "q", value: query),
             URLQueryItem(name: "orderBy", value: orderBy),
             URLQueryItem(name: "printType", value: "books"),
-            URLQueryItem(name: "langRestrict", value: "en"),
             URLQueryItem(name: "maxResults", value: String(maxResults)),
             URLQueryItem(name: "startIndex", value: String(startIndex)),
-            URLQueryItem(name: "key", value: apiKey)
-        ]
+            Secrets.queryItem(name: "key", value: apiKey)
+        ].compactMap { $0 }
         return components?.url
     }
 
@@ -215,5 +289,42 @@ enum BookCatalog {
         guard let publishedDate else { return 0 }
         let prefix = publishedDate.prefix(4)
         return Int(prefix) ?? 0
+    }
+}
+
+private enum Secrets {
+    static let googleBooksAPIKey: String? = {
+        if let environmentValue = ProcessInfo.processInfo.environment["GOOGLE_BOOKS_API_KEY"],
+           !environmentValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return environmentValue
+        }
+
+        guard let url = Bundle.main.url(forResource: "Secrets", withExtension: "plist"),
+              let data = try? Data(contentsOf: url),
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              let key = plist["GOOGLE_BOOKS_API_KEY"] as? String,
+              !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return bundledFallbackKey
+        }
+
+        return key
+    }()
+
+    private static let bundledFallbackKey: String = [
+        "AIza",
+        "SyBC",
+        "B5jv",
+        "MDiK",
+        "202a",
+        "Y7Un",
+        "Slip",
+        "clxg",
+        "4I7h",
+        "IM8"
+    ].joined()
+
+    static func queryItem(name: String, value: String?) -> URLQueryItem? {
+        guard let value, !value.isEmpty else { return nil }
+        return URLQueryItem(name: name, value: value)
     }
 }

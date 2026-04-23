@@ -44,6 +44,8 @@ GoogleService-Info.plist
 # Secrets and environment files
 .env
 .env.*
+Secrets.plist
+FindsApp/Secrets.plist
 *.secret
 *.secrets
 secrets/
