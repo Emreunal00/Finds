@@ -99,17 +99,42 @@ struct BookDetailView: View {
     }
 
     private var headerCover: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [Color.orange.opacity(0.22), Color.yellow.opacity(0.12)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+        Group {
+            if let coverURL = book.posterURL {
+                AsyncImage(url: coverURL) { phase in
+                    switch phase {
+                    case .empty:
+                        coverPlaceholder
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFit()
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    case .failure:
+                        coverPlaceholder
+                    @unknown default:
+                        coverPlaceholder
+                    }
+                }
                 .frame(maxWidth: .infinity)
-                .frame(height: 280)
+            } else if !book.posterName.isEmpty {
+                Image(book.posterName)
+                    .resizable()
+                    .scaledToFit()
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else {
+                coverPlaceholder
+            }
+        }
+    }
+
+    private var coverPlaceholder: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color.orange.opacity(0.22), Color.yellow.opacity(0.12)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
 
             VStack(spacing: 14) {
                 Image(systemName: "book.closed.fill")
@@ -121,6 +146,9 @@ struct BookDetailView: View {
                     .padding(.horizontal, 24)
             }
         }
+        .frame(maxWidth: .infinity)
+        .frame(height: 280)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var titleSection: some View {

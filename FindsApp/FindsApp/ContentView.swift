@@ -48,6 +48,7 @@ struct ContentView: View {
 
     @State private var showOnboarding = false
     @State private var onboardingChecked = false
+    @State private var showMiniGame = false
 
     private var welcomeTitle: String {
         let nickname: String = {
@@ -65,103 +66,107 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        // İçerik başlığı (large gibi görünür, ama navbara bağlı değil)
-                        HStack {
-                            Text(welcomeTitle)
-                                .font(.largeTitle).bold()
-                            Spacer()
-                        }
+            ZStack {
+                Group {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 24) {
+                            // İçerik başlığı (large gibi görünür, ama navbara bağlı değil)
+                            HStack {
+                                Text(welcomeTitle)
+                                    .font(.largeTitle).bold()
+                                Spacer()
+                            }
 
-                        Group {
-                            if homeVM.isLoading && homeVM.trending.isEmpty && homeVM.suggestions.isEmpty && homeVM.trendingShows.isEmpty && homeVM.suggestedShows.isEmpty && homeVM.trendingBooks.isEmpty && homeVM.suggestedBooks.isEmpty {
-                                CustomLoadingView(message: "Loading…")
+                            Group {
+                                if homeVM.isLoading && homeVM.trending.isEmpty && homeVM.suggestions.isEmpty && homeVM.trendingShows.isEmpty && homeVM.suggestedShows.isEmpty && homeVM.trendingBooks.isEmpty && homeVM.suggestedBooks.isEmpty {
+                                    CustomLoadingView(message: "Loading…")
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                } else if let err = homeVM.error,
+                                          homeVM.trending.isEmpty && homeVM.suggestions.isEmpty && homeVM.trendingShows.isEmpty && homeVM.suggestedShows.isEmpty && homeVM.trendingBooks.isEmpty && homeVM.suggestedBooks.isEmpty {
+                                    VStack(spacing: 12) {
+                                        Text("Failed to load")
+                                            .font(.headline)
+                                        Text(err)
+                                            .font(.footnote)
+                                            .foregroundStyle(.secondary)
+                                        Button("Retry") {
+                                            Task { await homeVM.load(userID: authVM.user?.id) }
+                                        }
+                                        .buttonStyle(.borderedProminent)
+                                    }
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            } else if let err = homeVM.error,
-                                      homeVM.trending.isEmpty && homeVM.suggestions.isEmpty && homeVM.trendingShows.isEmpty && homeVM.suggestedShows.isEmpty && homeVM.trendingBooks.isEmpty && homeVM.suggestedBooks.isEmpty {
-                                VStack(spacing: 12) {
-                                    Text("Failed to load")
-                                        .font(.headline)
-                                    Text(err)
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                    Button("Retry") {
-                                        Task { await homeVM.load(userID: authVM.user?.id) }
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                }
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .padding()
-                            } else {
-                                VStack(alignment: .leading, spacing: 24) {
-                                    if !homeVM.trending.isEmpty {
-                                        NavigationLink {
-                                            MoreListView(kind: .trendingMovies)
-                                        } label: {
-                                            SectionHeader(title: "Trending movies", showsChevron: true)
+                                    .padding()
+                                } else {
+                                    VStack(alignment: .leading, spacing: 24) {
+                                        if !homeVM.trending.isEmpty {
+                                            NavigationLink {
+                                                MoreListView(kind: .trendingMovies)
+                                            } label: {
+                                                SectionHeader(title: "Trending movies", showsChevron: true)
+                                            }
+                                            .buttonStyle(.plain)
+                                            PosterHScroll(movies: homeVM.trending)
                                         }
-                                        .buttonStyle(.plain)
-                                        PosterHScroll(movies: homeVM.trending)
-                                    }
 
-                                    if !homeVM.suggestions.isEmpty {
-                                        NavigationLink {
-                                            MoreListView(kind: .suggestedMovies)
-                                        } label: {
-                                            SectionHeader(title: "Top picks for you", showsChevron: true)
+                                        if !homeVM.suggestions.isEmpty {
+                                            NavigationLink {
+                                                MoreListView(kind: .suggestedMovies)
+                                            } label: {
+                                                SectionHeader(title: "Top picks for you", showsChevron: true)
+                                            }
+                                            .buttonStyle(.plain)
+                                            PosterHScroll(movies: homeVM.suggestions)
                                         }
-                                        .buttonStyle(.plain)
-                                        PosterHScroll(movies: homeVM.suggestions)
-                                    }
 
-                                    if !homeVM.trendingShows.isEmpty {
-                                        NavigationLink {
-                                            MoreListView(kind: .trendingTV)
-                                        } label: {
-                                            SectionHeader(title: "Trending shows", showsChevron: true)
+                                        if !homeVM.trendingShows.isEmpty {
+                                            NavigationLink {
+                                                MoreListView(kind: .trendingTV)
+                                            } label: {
+                                                SectionHeader(title: "Trending shows", showsChevron: true)
+                                            }
+                                            .buttonStyle(.plain)
+                                            PosterHScroll(movies: homeVM.trendingShows)
                                         }
-                                        .buttonStyle(.plain)
-                                        PosterHScroll(movies: homeVM.trendingShows)
-                                    }
 
-                                    if !homeVM.suggestedShows.isEmpty {
-                                        NavigationLink {
-                                            MoreListView(kind: .suggestedTV)
-                                        } label: {
-                                            SectionHeader(title: "Suggested Shows", showsChevron: true)
+                                        if !homeVM.suggestedShows.isEmpty {
+                                            NavigationLink {
+                                                MoreListView(kind: .suggestedTV)
+                                            } label: {
+                                                SectionHeader(title: "Suggested Shows", showsChevron: true)
+                                            }
+                                            .buttonStyle(.plain)
+                                            PosterHScroll(movies: homeVM.suggestedShows)
                                         }
-                                        .buttonStyle(.plain)
-                                        PosterHScroll(movies: homeVM.suggestedShows)
-                                    }
 
-                                    if !homeVM.trendingBooks.isEmpty {
-                                        NavigationLink {
-                                            MoreListView(kind: .trendingBooks)
-                                        } label: {
-                                            SectionHeader(title: "Popular books", showsChevron: true)
+                                        if !homeVM.trendingBooks.isEmpty {
+                                            NavigationLink {
+                                                MoreListView(kind: .trendingBooks)
+                                            } label: {
+                                                SectionHeader(title: "Popular books", showsChevron: true)
+                                            }
+                                            .buttonStyle(.plain)
+                                            PosterHScroll(movies: homeVM.trendingBooks)
                                         }
-                                        .buttonStyle(.plain)
-                                        PosterHScroll(movies: homeVM.trendingBooks)
-                                    }
 
-                                    if !homeVM.suggestedBooks.isEmpty {
-                                        NavigationLink {
-                                            MoreListView(kind: .suggestedBooks)
-                                        } label: {
-                                            SectionHeader(title: "Recommended books", showsChevron: true)
+                                        if !homeVM.suggestedBooks.isEmpty {
+                                            NavigationLink {
+                                                MoreListView(kind: .suggestedBooks)
+                                            } label: {
+                                                SectionHeader(title: "Recommended books", showsChevron: true)
+                                            }
+                                            .buttonStyle(.plain)
+                                            PosterHScroll(movies: homeVM.suggestedBooks)
                                         }
-                                        .buttonStyle(.plain)
-                                        PosterHScroll(movies: homeVM.suggestedBooks)
                                     }
                                 }
                             }
                         }
+                        .padding(.horizontal)
+                        .padding(.top, 24)
                     }
-                    .padding(.horizontal)
-                    .padding(.top, 24)
                 }
+
+                HomeMiniGameLauncher(isPresented: $showMiniGame)
             }
             // Navigation bar’ı bu ekranda gizle: mini başlık görünmez
             .navigationBarHidden(true)
