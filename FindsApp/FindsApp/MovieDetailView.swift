@@ -490,7 +490,10 @@ struct MovieDetailView: View {
 
     private var titleSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(movie.title).font(.title2).bold()
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                mediaTypeBadge
+                Text(movie.title).font(.title2).bold()
+            }
             HStack(spacing: 8) {
                 if movie.year > 0 { Text(String(movie.year)) }
                 if let runtime = movie.durationMinutes {
@@ -506,6 +509,23 @@ struct MovieDetailView: View {
         }
     }
 
+    private var mediaTypeBadge: some View {
+        Image(systemName: mediaSymbolName)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+    }
+
+    private var mediaSymbolName: String {
+        switch (movie.mediaType ?? "movie").lowercased() {
+        case "tv":
+            return "tv.fill"
+        case "book":
+            return "book.closed.fill"
+        default:
+            return "film.fill"
+        }
+    }
+
     private var actionRow: some View {
         let columns = [
             GridItem(.flexible(minimum: 100), spacing: 12),
@@ -514,7 +534,7 @@ struct MovieDetailView: View {
         return LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
             Button {
                 let type = movie.mediaType ?? "movie"
-                Task { await authVM.toggleFavorite(movieID: movie.id, mediaType: type) }
+                Task { await authVM.toggleFavorite(movieID: movie.id, mediaType: type, externalContentID: movie.externalContentID) }
             } label: {
                 Label(isFavorite ? "Favorite" : "Favorite",
                       systemImage: isFavorite ? "heart.fill" : "heart")
@@ -527,7 +547,7 @@ struct MovieDetailView: View {
 
             Button {
                 let type = movie.mediaType ?? "movie"
-                Task { await authVM.toggleWatchlist(movieID: movie.id, mediaType: type) }
+                Task { await authVM.toggleWatchlist(movieID: movie.id, mediaType: type, externalContentID: movie.externalContentID) }
             } label: {
                 Label(isInWatchlist ? "Watchlist" : "Watchlist",
                       systemImage: isInWatchlist ? "bookmark.fill" : "bookmark")
@@ -540,7 +560,7 @@ struct MovieDetailView: View {
 
             Button {
                 let type = movie.mediaType ?? "movie"
-                Task { await authVM.toggleWatched(movieID: movie.id, type: type) }
+                Task { await authVM.toggleWatched(movieID: movie.id, type: type, externalContentID: movie.externalContentID) }
             } label: {
                 Label(isWatched ? "Watched" : "Watched",
                       systemImage: isWatched ? "checkmark.circle.fill" : "checkmark.circle")
@@ -735,6 +755,7 @@ struct MovieDetailView: View {
                     try await itemRef.setData([
                         "movieId": movie.id,
                         "type": type,
+                        "externalContentID": movie.externalContentID as Any,
                         "addedAt": FieldValue.serverTimestamp()
                     ])
                 } else {

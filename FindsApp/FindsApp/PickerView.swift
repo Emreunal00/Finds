@@ -253,7 +253,7 @@ struct PickerView: View {
                 let type = (movie.mediaType ?? "movie").lowercased()
                 let key = "\(type):\(movie.id)"
                 if localWatched.contains(key) { localWatched.remove(key) } else { localWatched.insert(key) }
-                Task { await authVM.toggleWatched(movieID: movie.id, type: type) }
+                Task { await authVM.toggleWatched(movieID: movie.id, type: type, externalContentID: movie.externalContentID) }
             } label: {
                 Label(watchedLabel, systemImage: isWatched ? "checkmark.circle.fill" : "checkmark.circle")
                     .labelStyle(.titleAndIcon)
@@ -269,7 +269,7 @@ struct PickerView: View {
                 let type = (movie.mediaType ?? "movie").lowercased()
                 let key = "\(type):\(movie.id)"
                 if localWatchlist.contains(key) { localWatchlist.remove(key) } else { localWatchlist.insert(key) }
-                Task { await authVM.toggleWatchlist(movieID: movie.id, mediaType: type) }
+                Task { await authVM.toggleWatchlist(movieID: movie.id, mediaType: type, externalContentID: movie.externalContentID) }
             } label: {
                 Label(watchlistLabel, systemImage: isInWatchlist ? "bookmark.fill" : "bookmark")
                     .labelStyle(.titleAndIcon)
@@ -285,7 +285,7 @@ struct PickerView: View {
                 let type = (movie.mediaType ?? "movie").lowercased()
                 let key = "\(type):\(movie.id)"
                 if localFavorites.contains(key) { localFavorites.remove(key) } else { localFavorites.insert(key) }
-                Task { await authVM.toggleFavorite(movieID: movie.id, mediaType: type) }
+                Task { await authVM.toggleFavorite(movieID: movie.id, mediaType: type, externalContentID: movie.externalContentID) }
             } label: {
                 Label(isFavorite ? "Favorite" : "Favorite", systemImage: isFavorite ? "heart.fill" : "heart")
                     .labelStyle(.titleAndIcon)
@@ -792,6 +792,7 @@ struct PickerView: View {
             try await targetDoc.setData([
                 "movieId": movie.id,
                 "type": type,
+                "externalContentID": movie.externalContentID as Any,
                 "decidedAt": FieldValue.serverTimestamp()
             ], merge: true)
         } catch {
@@ -887,6 +888,7 @@ struct PickerView: View {
                     try await itemRef.setData([
                         "movieId": movie.id,
                         "type": type,
+                        "externalContentID": movie.externalContentID as Any,
                         "addedAt": FieldValue.serverTimestamp()
                     ])
                 } else {
@@ -1124,7 +1126,7 @@ struct PickerView: View {
                         self.movies = filtered
                     }
                 case .books:
-                    let books = await BookCatalog.trendingBooks().shuffled()
+                    let books = await BookCatalog.trendingBooks(page: Int.random(in: 1...5)).shuffled()
                     let filtered: [Movie]
                     if let uid = authVM.user?.id {
                         let disliked = await fetchRecentlyDislikedIDs(uid: uid)

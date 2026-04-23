@@ -120,7 +120,7 @@ struct SearchView: View {
         HStack(spacing: 10) {
             // Arama alanı (yanında ekstra arama butonu yok) + overlay ile "çarpı" butonu
             HStack(spacing: 12) {
-                TextField("Search for a movie or TV show…", text: $vm.keyword)
+                TextField("Search for a movie, TV show, or book…", text: $vm.keyword)
                     .font(.system(size: 17)) // Yazı tipini büyüt
                     .textInputAutocapitalization(.never)
                     .submitLabel(.search)
@@ -219,15 +219,18 @@ struct SearchView: View {
                 LazyVStack(alignment: .leading, spacing: 12) {
                     ForEach(vm.results) { movie in
                         NavigationLink {
-                            MovieDetailView(movie: movie)
+                            MediaDetailDestination(item: movie)
                         } label: {
                             HStack(spacing: 12) {
                                 poster(for: movie)
                                     .frame(width: 70, height: 105)
                                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(movie.title)
-                                        .font(.headline)
+                                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                        mediaTypeBadge(for: movie)
+                                        Text(movie.title)
+                                            .font(.headline)
+                                    }
                                     HStack(spacing: 8) {
                                         if movie.year > 0 {
                                             Text(String(movie.year))
@@ -296,9 +299,9 @@ struct SearchView: View {
                 case .success(let image):
                     image.resizable().scaledToFill()
                 case .failure:
-                    placeholder
+                    placeholder(for: movie)
                 @unknown default:
-                    placeholder
+                    placeholder(for: movie)
                 }
             }
         } else if !movie.posterName.isEmpty {
@@ -306,16 +309,33 @@ struct SearchView: View {
                 .resizable()
                 .scaledToFill()
         } else {
-            placeholder
+            placeholder(for: movie)
         }
     }
 
-    private var placeholder: some View {
+    private func placeholder(for movie: Movie) -> some View {
         ZStack {
             Color(.tertiarySystemFill)
-            Image(systemName: "film")
+            Image(systemName: mediaSymbolName(for: movie))
                 .font(.system(size: 20))
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private func mediaTypeBadge(for movie: Movie) -> some View {
+        Image(systemName: mediaSymbolName(for: movie))
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+    }
+
+    private func mediaSymbolName(for movie: Movie) -> String {
+        switch (movie.mediaType ?? "movie").lowercased() {
+        case "book":
+            return "book.closed.fill"
+        case "tv":
+            return "tv.fill"
+        default:
+            return "film.fill"
         }
     }
 }

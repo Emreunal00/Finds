@@ -190,7 +190,7 @@ struct WatchedListView: View {
                 for entry in newestFirst {
                     group.addTask {
                         do {
-                            let media = try await BookCatalog.fetchMedia(id: entry.id, type: entry.type, service: service)
+                            let media = try await BookCatalog.fetchMedia(id: entry.id, type: entry.type, externalContentID: entry.externalID, service: service)
                             return (entry.id, media)
                         } catch {
                             return (entry.id, nil)
@@ -219,7 +219,7 @@ struct WatchedListView: View {
 
         // Persist the change (AuthViewModel handles toggling)
         Task { @MainActor in
-            await authVM.toggleWatched(movieID: movie.id, type: (movie.mediaType ?? "movie"))
+            await authVM.toggleWatched(movieID: movie.id, type: (movie.mediaType ?? "movie"), externalContentID: movie.externalContentID)
         }
     }
 

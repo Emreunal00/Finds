@@ -285,7 +285,7 @@ final class AuthViewModel: ObservableObject {
 
     // MARK: - List toggles (typed entries)
 
-    func toggleFavorite(movieID: Int, mediaType: String) async {
+    func toggleFavorite(movieID: Int, mediaType: String, externalContentID: String? = nil) async {
         guard let uid = service.currentUID, var user = self.user else {
             self.errorMessage = "No active session."
             return
@@ -295,7 +295,7 @@ final class AuthViewModel: ObservableObject {
             return
         }
         let type = mediaType.lowercased()
-        let entry = WatchedEntry(id: movieID, type: type)
+        let entry = WatchedEntry(id: movieID, type: type, externalID: externalContentID)
         let repo = UserProfileRepository()
 
         var updatedUser = user
@@ -332,7 +332,7 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
-    func toggleWatchlist(movieID: Int, mediaType: String) async {
+    func toggleWatchlist(movieID: Int, mediaType: String, externalContentID: String? = nil) async {
         guard let uid = service.currentUID, var user = self.user else {
             self.errorMessage = "No active session."
             return
@@ -342,7 +342,7 @@ final class AuthViewModel: ObservableObject {
             return
         }
         let type = mediaType.lowercased()
-        let entry = WatchedEntry(id: movieID, type: type)
+        let entry = WatchedEntry(id: movieID, type: type, externalID: externalContentID)
         let repo = UserProfileRepository()
 
         var updatedUser = user
@@ -384,7 +384,7 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
-    func toggleWatched(movieID: Int, type: String) async {
+    func toggleWatched(movieID: Int, type: String, externalContentID: String? = nil) async {
         guard let uid = service.currentUID, var user = self.user else {
             self.errorMessage = "No active session."
             return
@@ -394,7 +394,7 @@ final class AuthViewModel: ObservableObject {
             return
         }
         let normType = type.lowercased()
-        let entry = WatchedEntry(id: movieID, type: normType)
+        let entry = WatchedEntry(id: movieID, type: normType, externalID: externalContentID)
         let repo = UserProfileRepository()
 
         var updatedUser = user

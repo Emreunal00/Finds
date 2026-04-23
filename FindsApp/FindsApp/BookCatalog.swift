@@ -1,51 +1,106 @@
 import Foundation
 
+private struct GoogleBooksResponse: Decodable {
+    let items: [GoogleBookItem]?
+}
+
+private struct GoogleBookItem: Decodable {
+    let id: String
+    let volumeInfo: GoogleBookVolumeInfo
+}
+
+private struct GoogleBookVolumeInfo: Decodable {
+    let title: String?
+    let authors: [String]?
+    let publishedDate: String?
+    let description: String?
+    let categories: [String]?
+    let averageRating: Double?
+    let ratingsCount: Int?
+    let imageLinks: GoogleBookImageLinks?
+}
+
+private struct GoogleBookImageLinks: Decodable {
+    let thumbnail: String?
+    let smallThumbnail: String?
+}
+
 enum BookCatalog {
-    static let popularShelf: [Movie] = [
-        makeBook(id: 900001, title: "Fourth Wing", year: 2023, genres: ["Fantasy", "Romance"], rating: 4.4, summary: "A dragon rider fantasy about survival, rivalry, and dangerous alliances at Basgiath War College.", author: "Rebecca Yarros"),
-        makeBook(id: 900002, title: "Iron Flame", year: 2023, genres: ["Fantasy", "Adventure"], rating: 4.3, summary: "Violet returns to a deadlier stage of training where secrets, power, and trust collide.", author: "Rebecca Yarros"),
-        makeBook(id: 900003, title: "The Housemaid", year: 2022, genres: ["Thriller", "Mystery"], rating: 4.1, summary: "A domestic thriller about a live-in housemaid who slowly realizes the family she works for is not what it seems.", author: "Freida McFadden"),
-        makeBook(id: 900004, title: "Tomorrow, and Tomorrow, and Tomorrow", year: 2022, genres: ["Drama", "Literary Fiction"], rating: 4.2, summary: "Two game designers build worlds together while navigating ambition, grief, and friendship.", author: "Gabrielle Zevin"),
-        makeBook(id: 900005, title: "The Women", year: 2024, genres: ["Historical Fiction"], rating: 4.5, summary: "A Vietnam War-era story focused on service, sacrifice, and the women often erased from history.", author: "Kristin Hannah"),
-        makeBook(id: 900006, title: "Yellowface", year: 2023, genres: ["Satire", "Thriller"], rating: 4.0, summary: "A sharp publishing satire about envy, theft, identity, and literary fame.", author: "R. F. Kuang")
-    ]
+    private static let apiKey = "AIzaSyBCB5jvMDiK202aY7UnSlipclxg4I7hIM8"
+    private static let baseURL = URL(string: "https://www.googleapis.com/books/v1/volumes")!
 
-    static let recommendedShelf: [Movie] = [
-        makeBook(id: 900007, title: "Project Hail Mary", year: 2021, genres: ["Science Fiction"], rating: 4.6, summary: "A lone astronaut wakes up on a mission to save Earth with no memory and one unlikely ally.", author: "Andy Weir"),
-        makeBook(id: 900008, title: "Remarkably Bright Creatures", year: 2022, genres: ["Contemporary", "Feel-Good"], rating: 4.3, summary: "An offbeat, tender mystery connecting an elderly woman, a lost young man, and a clever octopus.", author: "Shelby Van Pelt"),
-        makeBook(id: 900009, title: "Divine Rivals", year: 2023, genres: ["Fantasy", "Romance"], rating: 4.2, summary: "Two rival journalists exchange anonymous letters during a war touched by gods.", author: "Rebecca Ross"),
-        makeBook(id: 900010, title: "Demon Copperhead", year: 2022, genres: ["Drama", "Literary Fiction"], rating: 4.4, summary: "A modern Appalachian coming-of-age story about resilience, poverty, and survival.", author: "Barbara Kingsolver"),
-        makeBook(id: 900011, title: "The Midnight Library", year: 2020, genres: ["Fantasy", "Drama"], rating: 4.0, summary: "A woman explores alternate versions of her life in a library between life and death.", author: "Matt Haig"),
-        makeBook(id: 900012, title: "The Silent Patient", year: 2019, genres: ["Thriller", "Psychological"], rating: 4.1, summary: "A therapist becomes obsessed with uncovering why a famous artist shot her husband and then stopped speaking.", author: "Alex Michaelides")
-    ]
+    private actor BookStore {
+        private var cachedByExternalID: [String: Movie] = [:]
+        private var cachedByNumericID: [Int: Movie] = [:]
 
-    static var allBooks: [Movie] {
-        popularShelf + recommendedShelf.filter { candidate in
-            !popularShelf.contains(where: { $0.id == candidate.id })
+        func store(_ books: [Movie]) {
+            for book in books {
+                if let externalID = book.externalContentID {
+                    cachedByExternalID[externalID] = book
+                }
+                cachedByNumericID[book.id] = book
+            }
+        }
+
+        func book(numericID: Int) -> Movie? {
+            cachedByNumericID[numericID]
+        }
+
+        func book(externalID: String) -> Movie? {
+            cachedByExternalID[externalID]
         }
     }
 
-    static func trendingBooks() async -> [Movie] {
-        popularShelf
+    private static let store = BookStore()
+
+    static func trendingBooks(page: Int = 1, pageSize: Int = 20) async -> [Movie] {
+        await fetchBooksPage(query: "subject:fiction", orderBy: "relevance", page: page, pageSize: pageSize)
     }
 
-    static func recommendedBooks(for userID: String?) async -> [Movie] {
-        recommendedShelf
+    static func recommendedBooks(for userID: String?, page: Int = 1, pageSize: Int = 20) async -> [Movie] {
+        await fetchBooksPage(query: "subject:fiction", orderBy: "newest", page: page, pageSize: pageSize)
     }
 
-    static func fetchBook(id: Int) throws -> Movie {
-        guard let book = allBooks.first(where: { $0.id == id }) else {
+    static func searchBooks(query: String, maxResults: Int = 12) async -> [Movie] {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return [] }
+        return await fetchBooks(query: trimmedQuery, orderBy: "relevance", maxResults: maxResults)
+    }
+
+    static func fetchBook(id: Int, externalContentID: String? = nil) async throws -> Movie {
+        if let externalContentID,
+           let cached = await store.book(externalID: externalContentID) {
+            return cached
+        }
+        if let cached = await store.book(numericID: id) {
+            return cached
+        }
+        guard let externalContentID else {
             throw NSError(domain: "BookCatalog", code: 404, userInfo: [
                 NSLocalizedDescriptionKey: "Book not found."
             ])
         }
-        return book
+
+        let url = baseURL.appending(path: externalContentID).appending(queryItems: [
+            URLQueryItem(name: "key", value: apiKey)
+        ])
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw NSError(domain: "BookCatalog", code: 500, userInfo: [
+                NSLocalizedDescriptionKey: "Failed to load book."
+            ])
+        }
+
+        let item = try JSONDecoder().decode(GoogleBookItem.self, from: data)
+        let movie = map(item: item)
+        await store.store([movie])
+        return movie
     }
 
-    static func fetchMedia(id: Int, type: String, service: MovieServicing = MovieService()) async throws -> Movie {
+    static func fetchMedia(id: Int, type: String, externalContentID: String? = nil, service: MovieServicing = MovieService()) async throws -> Movie {
         switch type.lowercased() {
         case "book":
-            return try fetchBook(id: id)
+            return try await fetchBook(id: id, externalContentID: externalContentID)
         case "tv":
             return try await service.fetchTVBasic(id: id)
         default:
@@ -57,29 +112,108 @@ enum BookCatalog {
         movie.isBook ? "book.closed" : "film"
     }
 
-    private static func makeBook(
-        id: Int,
-        title: String,
-        year: Int,
-        genres: [String],
-        rating: Double,
-        summary: String,
-        author: String
-    ) -> Movie {
-        Movie(
-            id: id,
-            title: title,
-            year: year,
-            genres: genres,
+    private static func fetchBooks(query: String, orderBy: String, maxResults: Int) async -> [Movie] {
+        let clampedTarget = max(1, min(maxResults, 250))
+        let pageSize = 30
+        var collected: [Movie] = []
+        var seenExternalIDs = Set<String>()
+        var page = 1
+
+        while collected.count < clampedTarget {
+            let batchSize = min(pageSize, clampedTarget - collected.count)
+            let books = await fetchBooksPage(query: query, orderBy: orderBy, page: page, pageSize: batchSize)
+            if books.isEmpty { break }
+
+            let uniqueBooks = books.filter { book in
+                guard let externalID = book.externalContentID else { return false }
+                return seenExternalIDs.insert(externalID).inserted
+            }
+
+            collected.append(contentsOf: uniqueBooks)
+            if books.count < batchSize { break }
+            page += 1
+        }
+
+        return Array(collected.prefix(clampedTarget))
+    }
+
+    private static func fetchBooksPage(query: String, orderBy: String, page: Int, pageSize: Int) async -> [Movie] {
+        let clampedPage = max(1, page)
+        let clampedPageSize = max(1, min(pageSize, 40))
+        let startIndex = (clampedPage - 1) * clampedPageSize
+        guard let url = booksURL(
+            query: query,
+            orderBy: orderBy,
+            maxResults: clampedPageSize,
+            startIndex: startIndex
+        ) else { return [] }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return []
+            }
+            let decoded = try JSONDecoder().decode(GoogleBooksResponse.self, from: data)
+            let books = (decoded.items ?? []).map(map(item:))
+            await store.store(books)
+            return books
+        } catch {
+            print("[BookCatalog] fetch failed:", error.localizedDescription)
+            return []
+        }
+    }
+
+    private static func booksURL(query: String, orderBy: String, maxResults: Int, startIndex: Int) -> URL? {
+        var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "orderBy", value: orderBy),
+            URLQueryItem(name: "printType", value: "books"),
+            URLQueryItem(name: "langRestrict", value: "en"),
+            URLQueryItem(name: "maxResults", value: String(maxResults)),
+            URLQueryItem(name: "startIndex", value: String(startIndex)),
+            URLQueryItem(name: "key", value: apiKey)
+        ]
+        return components?.url
+    }
+
+    private static func map(item: GoogleBookItem) -> Movie {
+        let info = item.volumeInfo
+        let publishedYear = extractYear(from: info.publishedDate)
+        let posterURLString = info.imageLinks?.thumbnail ?? info.imageLinks?.smallThumbnail
+        let normalizedPosterURL = posterURLString?
+            .replacingOccurrences(of: "http://", with: "https://")
+
+        return Movie(
+            id: stableNumericID(for: item.id),
+            title: info.title ?? "Untitled",
+            year: publishedYear,
+            genres: info.categories ?? [],
             posterName: "",
-            rating: rating,
-            summary: summary,
-            posterURL: nil,
+            rating: info.averageRating ?? 0,
+            summary: info.description ?? "",
+            posterURL: normalizedPosterURL.flatMap(URL.init(string:)),
             durationMinutes: nil,
             mediaType: "book",
+            externalContentID: item.id,
             cast: nil,
-            directors: [author],
-            popularity: rating * 10
+            directors: info.authors,
+            popularity: Double(info.ratingsCount ?? 0)
         )
+    }
+
+    private static func stableNumericID(for string: String) -> Int {
+        var hash: UInt64 = 1469598103934665603
+        for byte in string.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 1099511628211
+        }
+        return Int(hash & 0x7fffffff)
+    }
+
+    private static func extractYear(from publishedDate: String?) -> Int {
+        guard let publishedDate else { return 0 }
+        let prefix = publishedDate.prefix(4)
+        return Int(prefix) ?? 0
     }
 }

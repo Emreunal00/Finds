@@ -125,8 +125,11 @@ struct BookDetailView: View {
 
     private var titleSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(book.title)
-                .font(.title2.bold())
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                mediaTypeBadge
+                Text(book.title)
+                    .font(.title2.bold())
+            }
             HStack(spacing: 8) {
                 if book.year > 0 {
                     Text(String(book.year))
@@ -140,6 +143,12 @@ struct BookDetailView: View {
         }
     }
 
+    private var mediaTypeBadge: some View {
+        Image(systemName: "book.closed.fill")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+    }
+
     private var actionRow: some View {
         let columns = [
             GridItem(.flexible(minimum: 100), spacing: 12),
@@ -148,7 +157,7 @@ struct BookDetailView: View {
 
         return LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
             Button {
-                Task { await authVM.toggleFavorite(movieID: book.id, mediaType: "book") }
+                Task { await authVM.toggleFavorite(movieID: book.id, mediaType: "book", externalContentID: book.externalContentID) }
             } label: {
                 Label("Favorite", systemImage: isFavorite ? "heart.fill" : "heart")
                     .frame(maxWidth: .infinity)
@@ -157,7 +166,7 @@ struct BookDetailView: View {
             .tint(isFavorite ? .pink : .secondary)
 
             Button {
-                Task { await authVM.toggleWatchlist(movieID: book.id, mediaType: "book") }
+                Task { await authVM.toggleWatchlist(movieID: book.id, mediaType: "book", externalContentID: book.externalContentID) }
             } label: {
                 Label("Want to Read", systemImage: isInWatchlist ? "bookmark.fill" : "bookmark")
                     .frame(maxWidth: .infinity)
@@ -166,7 +175,7 @@ struct BookDetailView: View {
             .tint(isInWatchlist ? .blue : .secondary)
 
             Button {
-                Task { await authVM.toggleWatched(movieID: book.id, type: "book") }
+                Task { await authVM.toggleWatched(movieID: book.id, type: "book", externalContentID: book.externalContentID) }
             } label: {
                 Label("Read", systemImage: isWatched ? "checkmark.circle.fill" : "checkmark.circle")
                     .frame(maxWidth: .infinity)
@@ -463,6 +472,7 @@ struct BookDetailView: View {
                     try await itemRef.setData([
                         "movieId": book.id,
                         "type": "book",
+                        "externalContentID": book.externalContentID as Any,
                         "addedAt": FieldValue.serverTimestamp()
                     ])
                 } else {

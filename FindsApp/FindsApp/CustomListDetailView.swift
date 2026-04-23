@@ -227,18 +227,18 @@ struct CustomListDetailView: View {
                 .order(by: "addedAt", descending: true)
 
             let snap = try await itemsRef.getDocuments()
-            let items = snap.documents.compactMap { doc -> (Int, String)? in
+            let items = snap.documents.compactMap { doc -> (Int, String, String?)? in
                 let data = doc.data()
                 guard let id = data["movieId"] as? Int, let type = data["type"] as? String else { return nil }
-                return (id, type)
+                return (id, type, data["externalContentID"] as? String)
             }
             self.originalOrderIDs = items.map { $0.0 }
 
             let fetched: [Movie] = await withTaskGroup(of: (Int, Movie?).self) { group -> [Movie] in
-                for (id, type) in items {
+                for (id, type, externalContentID) in items {
                     group.addTask {
                         do {
-                            let media = try await BookCatalog.fetchMedia(id: id, type: type, service: service)
+                            let media = try await BookCatalog.fetchMedia(id: id, type: type, externalContentID: externalContentID, service: service)
                             return (id, media)
                         } catch {
                             return (id, nil)

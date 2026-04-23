@@ -828,7 +828,7 @@ struct ProfileView: View {
             for entry in entries {
                 group.addTask {
                     do {
-                        let media = try await BookCatalog.fetchMedia(id: entry.id, type: entry.type, service: service)
+                        let media = try await BookCatalog.fetchMedia(id: entry.id, type: entry.type, externalContentID: entry.externalID, service: service)
                         return (entry.id, media)
                     } catch {
                         return (entry.id, nil)

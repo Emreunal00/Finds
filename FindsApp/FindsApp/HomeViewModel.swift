@@ -27,7 +27,7 @@ final class HomeViewModel: ObservableObject {
         do {
             async let t = service.getTrending(page: 1)
             async let tvT = service.getTrendingTV(page: 1)
-            async let booksT = BookCatalog.trendingBooks()
+            async let booksT = BookCatalog.trendingBooks(page: 1)
 
             var recMoviesTask: Task<[Movie], Error>? = nil
             var recShowsTask: Task<[Movie], Error>? = nil
@@ -36,7 +36,7 @@ final class HomeViewModel: ObservableObject {
                 recMoviesTask = Task { try await recommendations.fetchRecommendedMovies(userID: uid) }
                 recShowsTask = Task { try await recommendations.fetchRecommendedShows(userID: uid) }
             }
-            recBooksTask = Task { await BookCatalog.recommendedBooks(for: userID) }
+            recBooksTask = Task { await BookCatalog.recommendedBooks(for: userID, page: 1, pageSize: 30) }
 
             let (tr, trTV, trBooks) = try await (t, tvT, booksT)
             let recMovies = try await recMoviesTask?.value ?? []

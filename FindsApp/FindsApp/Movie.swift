@@ -12,6 +12,7 @@ struct Movie: Identifiable, Equatable, Codable {
     var durationMinutes: Int?
     // NEW: mediaType ("movie" or "tv")
     var mediaType: String?
+    var externalContentID: String?
 
     // NEW: Credits fields
     var cast: [String]?
@@ -31,6 +32,7 @@ struct Movie: Identifiable, Equatable, Codable {
         posterURL: URL? = nil,
         durationMinutes: Int? = nil,
         mediaType: String? = nil,
+        externalContentID: String? = nil,
         cast: [String]? = nil,
         directors: [String]? = nil,
         popularity: Double? = nil
@@ -45,6 +47,7 @@ struct Movie: Identifiable, Equatable, Codable {
         self.posterURL = posterURL
         self.durationMinutes = durationMinutes
         self.mediaType = mediaType
+        self.externalContentID = externalContentID
         self.cast = cast
         self.directors = directors
         self.popularity = popularity

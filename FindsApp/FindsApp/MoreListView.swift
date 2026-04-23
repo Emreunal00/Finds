@@ -159,13 +159,12 @@ struct MoreListView: View {
                         batch = [] // no fallback, keep only personalized first page
                     }
                 case .trendingBooks:
-                    batch = await BookCatalog.trendingBooks()
+                    batch = await BookCatalog.trendingBooks(page: page)
                 case .suggestedBooks:
-                    batch = await BookCatalog.recommendedBooks(for: authVM.user?.id)
+                    batch = await BookCatalog.recommendedBooks(for: authVM.user?.id, page: page, pageSize: 30)
                 }
                 if batch.isEmpty { break }
                 result.append(contentsOf: batch)
-                if kind == .trendingBooks || kind == .suggestedBooks { break }
                 page += 1
             }
             if result.count > 250 { result = Array(result.prefix(250)) }

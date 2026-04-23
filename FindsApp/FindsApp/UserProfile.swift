@@ -4,6 +4,13 @@ import FirebaseFirestore
 struct WatchedEntry: Codable, Equatable {
     let id: Int
     let type: String // "movie" or "tv"
+    let externalID: String?
+
+    init(id: Int, type: String, externalID: String? = nil) {
+        self.id = id
+        self.type = type
+        self.externalID = externalID
+    }
 }
 
 struct Profile: Codable, Identifiable, Equatable {
@@ -99,11 +106,11 @@ final class UserProfileRepository {
                 "displayName": prof.displayName as Any,
                 "photoURL": prof.photoURL as Any,
                 "createdAt": Timestamp(date: prof.createdAt),
-                "watchedEntries": prof.watchedEntries.map { ["id": $0.id, "type": $0.type] },
-                "favoritesEntries": prof.favoritesEntries.map { ["id": $0.id, "type": $0.type] },
-                "watchlistEntries": prof.watchlistEntries.map { ["id": $0.id, "type": $0.type] },
-                "booksReadEntries": prof.booksReadEntries.map { ["id": $0.id, "type": $0.type] },
-                "booksWantToReadEntries": prof.booksWantToReadEntries.map { ["id": $0.id, "type": $0.type] }
+                "watchedEntries": prof.watchedEntries.map { ["id": $0.id, "type": $0.type, "externalID": $0.externalID as Any] },
+                "favoritesEntries": prof.favoritesEntries.map { ["id": $0.id, "type": $0.type, "externalID": $0.externalID as Any] },
+                "watchlistEntries": prof.watchlistEntries.map { ["id": $0.id, "type": $0.type, "externalID": $0.externalID as Any] },
+                "booksReadEntries": prof.booksReadEntries.map { ["id": $0.id, "type": $0.type, "externalID": $0.externalID as Any] },
+                "booksWantToReadEntries": prof.booksWantToReadEntries.map { ["id": $0.id, "type": $0.type, "externalID": $0.externalID as Any] }
             ]
         }
 
@@ -180,9 +187,9 @@ final class UserProfileRepository {
                     if let arr = any as? [[String: Any]] {
                         return arr.compactMap { m in
                             if let id = m["id"] as? Int, let type = m["type"] as? String {
-                                return WatchedEntry(id: id, type: type)
+                                return WatchedEntry(id: id, type: type, externalID: m["externalID"] as? String)
                             } else if let idNum = m["id"] as? NSNumber, let type = m["type"] as? String {
-                                return WatchedEntry(id: idNum.intValue, type: type)
+                                return WatchedEntry(id: idNum.intValue, type: type, externalID: m["externalID"] as? String)
                             }
                             return nil
                         }
@@ -225,9 +232,9 @@ final class UserProfileRepository {
                 if let arr = any as? [[String: Any]] {
                     return arr.compactMap { m in
                         if let id = m["id"] as? Int, let type = m["type"] as? String {
-                            return WatchedEntry(id: id, type: type)
+                            return WatchedEntry(id: id, type: type, externalID: m["externalID"] as? String)
                         } else if let idNum = m["id"] as? NSNumber, let type = m["type"] as? String {
-                            return WatchedEntry(id: idNum.intValue, type: type)
+                            return WatchedEntry(id: idNum.intValue, type: type, externalID: m["externalID"] as? String)
                         }
                         return nil
                     }

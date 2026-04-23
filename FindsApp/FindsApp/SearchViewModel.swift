@@ -78,9 +78,13 @@ final class SearchViewModel: ObservableObject {
         print("[SearchVM] search start query='\(q)' year=\(selectedYear?.description ?? "nil") genreID=\(selectedGenreID?.description ?? "nil")")
 
         do {
-            // BOTH MOVIE AND TV: search/multi (MovieService has fallback)
-            var movies = try await service.searchMulti(query: q, page: 1)
-            print("[SearchVM] search/multi returned \(movies.count) items")
+            async let screenResults = service.searchMulti(query: q, page: 1)
+            async let bookResults = BookCatalog.searchBooks(query: q, maxResults: 12)
+
+            var movies = try await screenResults
+            let books = await bookResults
+            movies.append(contentsOf: books)
+            print("[SearchVM] combined search returned \(movies.count) items")
 
             // Optional: client-side filters by year and genre
             if let year = selectedYear {
@@ -92,7 +96,12 @@ final class SearchViewModel: ObservableObject {
                 // Assumes Movie.genres contains "#<id>" tokens
                 let token = "#\(gid)"
                 let before = movies.count
-                movies = movies.filter { $0.genres.contains(token) }
+                movies = movies.filter { movie in
+                    if movie.isBook {
+                        return false
+                    }
+                    return movie.genres.contains(token)
+                }
                 print("[SearchVM] genre filter \(gid): \(before) -> \(movies.count)")
             }
 
