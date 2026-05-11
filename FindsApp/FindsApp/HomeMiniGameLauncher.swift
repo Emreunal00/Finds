@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 private enum QuizTheme {
     static let primary = Color(red: 0.16, green: 0.66, blue: 0.44)
@@ -33,11 +34,8 @@ private enum QuizTheme {
 struct HomeMiniGameLauncher: View {
     @Binding var isPresented: Bool
 
-    @State private var dragOffset = CGSize.zero
-    @State private var containerSize = CGSize.zero
     @State private var settledOffset = CGSize(width: 0, height: 250)
     @State private var hasInitializedPosition = false
-    @State private var didDragLauncher = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -57,124 +55,210 @@ struct HomeMiniGameLauncher: View {
                         .transition(.scale(scale: 0.94).combined(with: .opacity))
                 }
 
-                launcher
-                    .position(
-                        x: clampedX(in: geometry.size),
-                        y: clampedY(in: geometry.size)
-                    )
-                    .zIndex(1)
+                if !isPresented {
+                    AssistiveQuizButton(position: $settledOffset) {
+                        isPresented = true
+                    }
+                        .transition(.scale(scale: 0.72).combined(with: .opacity))
+                        .zIndex(1)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(.spring(response: 0.28, dampingFraction: 0.84), value: isPresented)
             .onAppear {
-                containerSize = geometry.size
                 guard !hasInitializedPosition else { return }
                 hasInitializedPosition = true
                 settledOffset = defaultOffset(in: geometry.size)
             }
             .onChange(of: geometry.size) { _, newValue in
-                containerSize = newValue
                 if !hasInitializedPosition {
                     settledOffset = defaultOffset(in: newValue)
                     hasInitializedPosition = true
                 } else {
-                    settledOffset.width = settledOffset.width < newValue.width / 2 ? 60 : max(newValue.width - 60, 60)
-                    settledOffset.height = min(max(settledOffset.height, 120), max(newValue.height - 110, 120))
+                    settledOffset = AssistiveQuizButton.clampedPoint(settledOffset, in: newValue)
                 }
             }
         }
         .ignoresSafeArea(edges: .bottom)
     }
 
-    private var launcher: some View {
-        launcherArtwork
-            .frame(width: 108, height: 108)
-            .contentShape(Rectangle())
-            .shadow(color: Color.black.opacity(0.18), radius: 10, y: 6)
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    let translation = value.translation
-                    let dragThreshold: CGFloat = 8
-                    let distance = hypot(translation.width, translation.height)
-
-                    if distance > dragThreshold {
-                        didDragLauncher = true
-                        dragOffset = translation
-                    }
-                }
-                .onEnded { value in
-                    let translation = value.translation
-                    let dragThreshold: CGFloat = 8
-                    let distance = hypot(translation.width, translation.height)
-
-                    if distance > dragThreshold {
-                        settledOffset.width += translation.width
-                        settledOffset.height += translation.height
-                        snapToNearestEdge(in: containerSize)
-                    } else if !didDragLauncher {
-                        isPresented = true
-                    }
-
-                    dragOffset = .zero
-                    didDragLauncher = false
-                }
-            )
-            .accessibilityLabel("Movie quote quiz")
-    }
-
-    @ViewBuilder
-    private var launcherArtwork: some View {
-        if UIImage(named: "QuizgameLogo") != nil {
-            Image("QuizgameLogo")
-                .resizable()
-                .scaledToFit()
-        } else {
-            Image(systemName: "quote.bubble.fill")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(QuizTheme.primary)
-        }
-    }
-
-    private func clampedX(in size: CGSize) -> CGFloat {
-        let halfWidth: CGFloat = 54
-        let rawX = settledOffset.width + dragOffset.width
-        return min(max(rawX, halfWidth), max(size.width - halfWidth, halfWidth))
-    }
-
-    private func clampedY(in size: CGSize) -> CGFloat {
-        let rawY = settledOffset.height + dragOffset.height
-        return min(max(rawY, 64), max(size.height - 110, 64))
-    }
-
     private func defaultOffset(in size: CGSize) -> CGSize {
         CGSize(width: max(size.width - 54, 54), height: min(max(size.height * 0.28, 96), size.height - 140))
     }
+}
 
-    private func snapToNearestEdge(in size: CGSize) {
-        guard size != .zero else { return }
-        let leftEdgeX: CGFloat = 54
-        let rightEdgeX = max(size.width - 54, leftEdgeX)
-        let topEdgeY: CGFloat = 64
-        let bottomLimit = max(size.height - 110, topEdgeY)
+private struct AssistiveQuizButton: UIViewRepresentable {
+    @Binding var position: CGSize
+    let onTap: () -> Void
 
-        let clampedX = min(max(settledOffset.width, leftEdgeX), rightEdgeX)
-        let clampedY = min(max(settledOffset.height, topEdgeY), bottomLimit)
+    static let buttonSize: CGFloat = 124
+    static let expandedHitOutset: CGFloat = 0
 
-        let distanceToLeft = abs(clampedX - leftEdgeX)
-        let distanceToRight = abs(rightEdgeX - clampedX)
-        let distanceToTop = abs(clampedY - topEdgeY)
+    func makeUIView(context: Context) -> LauncherContainerView {
+        let container = LauncherContainerView()
+        container.backgroundColor = .clear
 
-        if distanceToTop <= distanceToLeft && distanceToTop <= distanceToRight {
-            settledOffset.width = clampedX
-            settledOffset.height = topEdgeY
-        } else if distanceToLeft <= distanceToRight {
-            settledOffset.width = leftEdgeX
-            settledOffset.height = clampedY
+        let button = ExpandedHitButton(type: .custom)
+        button.bounds = CGRect(x: 0, y: 0, width: Self.buttonSize, height: Self.buttonSize)
+        button.backgroundColor = .clear
+        button.accessibilityLabel = "Movie quote quiz"
+        button.contentHorizontalAlignment = .fill
+        button.contentVerticalAlignment = .fill
+
+        if let logo = UIImage(named: "QuizgameLogo") {
+            button.setBackgroundImage(logo, for: .normal)
         } else {
-            settledOffset.width = rightEdgeX
-            settledOffset.height = clampedY
+            button.setImage(UIImage(systemName: "quote.bubble.fill"), for: .normal)
+            button.tintColor = UIColor(red: 0.16, green: 0.66, blue: 0.44, alpha: 1)
+            button.imageView?.contentMode = .scaleAspectFill
         }
+
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.18
+        button.layer.shadowRadius = 10
+        button.layer.shadowOffset = CGSize(width: 0, height: 6)
+
+        button.addTarget(context.coordinator, action: #selector(Coordinator.didTapButton), for: .touchUpInside)
+
+        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
+        pan.cancelsTouchesInView = false
+        button.addGestureRecognizer(pan)
+
+        container.launcherButton = button
+        container.addSubview(button)
+        context.coordinator.button = button
+        return container
+    }
+
+    func updateUIView(_ uiView: LauncherContainerView, context: Context) {
+        context.coordinator.position = $position
+        context.coordinator.onTap = onTap
+        context.coordinator.container = uiView
+
+        guard let button = uiView.launcherButton else { return }
+        if button.center == .zero || !context.coordinator.isDragging {
+            button.center = CGPoint(x: position.width, y: position.height)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(position: $position, onTap: onTap)
+    }
+
+    static func clampedPoint(_ point: CGSize, in size: CGSize) -> CGSize {
+        let half = buttonSize / 2
+        let minY: CGFloat = 64
+        let maxX = max(size.width - half, half)
+        let maxY = max(size.height - 110, minY)
+
+        return CGSize(
+            width: min(max(point.width, half), maxX),
+            height: min(max(point.height, minY), maxY)
+        )
+    }
+
+    final class Coordinator: NSObject {
+        var position: Binding<CGSize>
+        var onTap: () -> Void
+        weak var container: UIView?
+        weak var button: UIButton?
+        var isDragging = false
+        private var didMove = false
+
+        init(position: Binding<CGSize>, onTap: @escaping () -> Void) {
+            self.position = position
+            self.onTap = onTap
+        }
+
+        @objc func didTapButton() {
+            guard !didMove else { return }
+            onTap()
+        }
+
+        @objc func handlePan(_ recognizer: UIPanGestureRecognizer) {
+            guard let button, let container = button.superview else { return }
+
+            switch recognizer.state {
+            case .began:
+                isDragging = true
+                didMove = false
+                container.bringSubviewToFront(button)
+            case .changed:
+                let translation = recognizer.translation(in: container)
+                let distance = hypot(translation.x, translation.y)
+                if distance > 3 {
+                    didMove = true
+                }
+
+                let proposed = CGSize(
+                    width: button.center.x + translation.x,
+                    height: button.center.y + translation.y
+                )
+                let clamped = AssistiveQuizButton.clampedPoint(proposed, in: container.bounds.size)
+                button.center = CGPoint(x: clamped.width, y: clamped.height)
+                position.wrappedValue = clamped
+                recognizer.setTranslation(.zero, in: container)
+            case .ended, .cancelled, .failed:
+                isDragging = false
+                let snapped = snapPoint(from: CGSize(width: button.center.x, height: button.center.y), in: container.bounds.size)
+                position.wrappedValue = snapped
+                UIView.animate(
+                    withDuration: 0.32,
+                    delay: 0,
+                    usingSpringWithDamping: 0.82,
+                    initialSpringVelocity: 0.4,
+                    options: [.allowUserInteraction, .beginFromCurrentState]
+                ) {
+                    button.center = CGPoint(x: snapped.width, y: snapped.height)
+                }
+
+                DispatchQueue.main.async {
+                    self.didMove = false
+                }
+            default:
+                break
+            }
+        }
+
+        private func snapPoint(from point: CGSize, in size: CGSize) -> CGSize {
+            let clamped = AssistiveQuizButton.clampedPoint(point, in: size)
+            let half = AssistiveQuizButton.buttonSize / 2
+            let leftX = half
+            let rightX = max(size.width - half, leftX)
+            let topY: CGFloat = 64
+
+            let distanceToLeft = abs(clamped.width - leftX)
+            let distanceToRight = abs(rightX - clamped.width)
+            let distanceToTop = abs(clamped.height - topY)
+
+            if distanceToTop <= distanceToLeft && distanceToTop <= distanceToRight {
+                return CGSize(width: clamped.width, height: topY)
+            }
+            if distanceToLeft <= distanceToRight {
+                return CGSize(width: leftX, height: clamped.height)
+            }
+            return CGSize(width: rightX, height: clamped.height)
+        }
+    }
+}
+
+private final class LauncherContainerView: UIView {
+    weak var launcherButton: UIButton?
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard let launcherButton else { return nil }
+        let convertedPoint = launcherButton.convert(point, from: self)
+        return launcherButton.point(inside: convertedPoint, with: event) ? launcherButton : nil
+    }
+}
+
+private final class ExpandedHitButton: UIButton {
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        let expandedBounds = bounds.insetBy(
+            dx: -AssistiveQuizButton.expandedHitOutset,
+            dy: -AssistiveQuizButton.expandedHitOutset
+        )
+        return expandedBounds.contains(point)
     }
 }
 

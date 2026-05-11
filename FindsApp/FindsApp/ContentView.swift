@@ -145,7 +145,7 @@ struct ContentView: View {
                                                 SectionHeader(title: "Popular books", showsChevron: true)
                                             }
                                             .buttonStyle(.plain)
-                                            PosterHScroll(movies: homeVM.trendingBooks)
+                                            BookHScroll(books: homeVM.trendingBooks)
                                         }
 
                                         if !homeVM.suggestedBooks.isEmpty {
@@ -155,7 +155,7 @@ struct ContentView: View {
                                                 SectionHeader(title: "Recommended books", showsChevron: true)
                                             }
                                             .buttonStyle(.plain)
-                                            PosterHScroll(movies: homeVM.suggestedBooks)
+                                            BookHScroll(books: homeVM.suggestedBooks)
                                         }
                                     }
                                 }
@@ -316,6 +316,167 @@ private struct PosterHScroll: View {
     }
 }
 
+private struct BookHScroll: View {
+    let books: [Movie]
+
+    @StateObject private var ratingsCache = PosterRatingsCache.shared
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 14) {
+                ForEach(books) { book in
+                    NavigationLink {
+                        MediaDetailDestination(item: book)
+                    } label: {
+                        BookHomeCard(book: book, average: ratingsCache.average(for: book))
+                    }
+                    .buttonStyle(.plain)
+                    .onAppear { ratingsCache.loadIfNeeded(for: book) }
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+}
+
+private struct BookHomeCard: View {
+    let book: Movie
+    let average: Double?
+
+    private var authorText: String {
+        let authors = book.directors ?? []
+        if authors.isEmpty { return "Unknown author" }
+        return authors.prefix(2).joined(separator: ", ")
+    }
+
+    private var genreText: String {
+        book.genres.first ?? "Book"
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(cardGradient)
+                .overlay(alignment: .topTrailing) {
+                    Image(systemName: BookCatalog.symbolName(for: book))
+                        .font(.system(size: 48, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.12))
+                        .padding(.top, 14)
+                        .padding(.trailing, 16)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                }
+
+            HStack(alignment: .bottom, spacing: 12) {
+                cover
+                    .frame(width: 58, height: 86)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                    }
+                    .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 5)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(genreText.uppercased())
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(Color.white.opacity(0.72))
+                        .lineLimit(1)
+
+                    Text(book.title)
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(3)
+                        .multilineTextAlignment(.leading)
+
+                    Text(authorText)
+                        .font(.caption)
+                        .foregroundStyle(Color.white.opacity(0.78))
+                        .lineLimit(1)
+
+                    HStack(spacing: 8) {
+                        if book.year > 0 {
+                            Label(String(book.year), systemImage: "calendar")
+                        }
+
+                        if let average {
+                            Label(String(format: "%.1f", average), systemImage: "star.fill")
+                        }
+                    }
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.white.opacity(0.82))
+                }
+                .frame(width: 136, alignment: .leading)
+            }
+            .padding(14)
+        }
+        .frame(width: 230, height: 150)
+    }
+
+    @ViewBuilder
+    private var cover: some View {
+        if let url = book.posterURL {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .empty:
+                    coverPlaceholder
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                case .failure:
+                    coverPlaceholder
+                @unknown default:
+                    coverPlaceholder
+                }
+            }
+        } else if !book.posterName.isEmpty {
+            Image(book.posterName)
+                .resizable()
+                .scaledToFill()
+        } else {
+            coverPlaceholder
+        }
+    }
+
+    private var coverPlaceholder: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color.white.opacity(0.26),
+                    Color.white.opacity(0.10)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Image(systemName: BookCatalog.symbolName(for: book))
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.75))
+        }
+    }
+
+    private var cardGradient: LinearGradient {
+        let colors = palette(for: book)
+        return LinearGradient(
+            colors: colors,
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    private func palette(for book: Movie) -> [Color] {
+        let palettes: [[Color]] = [
+            [Color(red: 0.10, green: 0.34, blue: 0.25), Color(red: 0.16, green: 0.66, blue: 0.44)],
+            [Color(red: 0.18, green: 0.28, blue: 0.42), Color(red: 0.25, green: 0.52, blue: 0.62)],
+            [Color(red: 0.32, green: 0.22, blue: 0.16), Color(red: 0.66, green: 0.43, blue: 0.24)],
+            [Color(red: 0.26, green: 0.22, blue: 0.38), Color(red: 0.48, green: 0.42, blue: 0.66)]
+        ]
+        let index = abs(book.title.unicodeScalars.reduce(0) { $0 + Int($1.value) }) % palettes.count
+        return palettes[index]
+    }
+}
 #Preview {
     ContentView()
         .environmentObject(AuthViewModel())

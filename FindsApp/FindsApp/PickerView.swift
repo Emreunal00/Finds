@@ -175,29 +175,22 @@ struct PickerView: View {
         }
 
         var body: some View {
-            PosterCard(movie: movie,
-                       dragOffset: $dragOffset,
-                       onSwipeLeft: { swiped in
-                           withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                               if !movies.isEmpty {
-                                   _ = movies.remove(at: currentIndex)
-                                   currentIndex = min(currentIndex, max(movies.count - 1, 0))
-                               }
-                           }
-                           Task { await saveSwipeDecision(swiped, .not_recommend) }
-                       },
-                       onSwipeRight: { swiped in
-                           withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                               if !movies.isEmpty {
-                                   _ = movies.remove(at: currentIndex)
-                                   currentIndex = min(currentIndex, max(movies.count - 1, 0))
-                               }
-                           }
-                           Task { await saveSwipeDecision(swiped, .recommend) }
-                       })
-                .id(movie.id)
-                .transition(cardTransition)
-                .animation(.spring(response: 0.40, dampingFraction: 0.85), value: movie.id)
+            Group {
+                if movie.isBook {
+                    BookPickerCard(movie: movie,
+                                   dragOffset: $dragOffset,
+                                   onSwipeLeft: handleSwipeLeft,
+                                   onSwipeRight: handleSwipeRight)
+                } else {
+                    PosterCard(movie: movie,
+                               dragOffset: $dragOffset,
+                               onSwipeLeft: handleSwipeLeft,
+                               onSwipeRight: handleSwipeRight)
+                }
+            }
+            .id(movie.id)
+            .transition(cardTransition)
+            .animation(.spring(response: 0.40, dampingFraction: 0.85), value: movie.id)
 
             NavigationLink { MediaDetailDestination(item: movie) } label: {
                 Text(movie.title)
@@ -218,6 +211,26 @@ struct PickerView: View {
                     .padding(.top, 8)
                     .padding(.horizontal, 16)
             }
+        }
+
+        private func handleSwipeLeft(_ swiped: Movie) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                if !movies.isEmpty {
+                    _ = movies.remove(at: currentIndex)
+                    currentIndex = min(currentIndex, max(movies.count - 1, 0))
+                }
+            }
+            Task { await saveSwipeDecision(swiped, .not_recommend) }
+        }
+
+        private func handleSwipeRight(_ swiped: Movie) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                if !movies.isEmpty {
+                    _ = movies.remove(at: currentIndex)
+                    currentIndex = min(currentIndex, max(movies.count - 1, 0))
+                }
+            }
+            Task { await saveSwipeDecision(swiped, .recommend) }
         }
     }
 
@@ -415,6 +428,174 @@ struct PickerView: View {
             .offset(x: dragOffset)
             .rotationEffect(rotation)
             .scaleEffect(scale)
+        }
+    }
+
+    private struct BookPickerCard: View {
+        let movie: Movie
+        @Binding var dragOffset: CGFloat
+        var onSwipeLeft: (Movie) -> Void
+        var onSwipeRight: (Movie) -> Void
+
+        private var authorText: String {
+            let authors = movie.directors ?? []
+            if authors.isEmpty { return "Unknown author" }
+            return authors.prefix(2).joined(separator: ", ")
+        }
+
+        private var genreText: String {
+            movie.genres.first ?? "Book"
+        }
+
+        var body: some View {
+            let rotation: Angle = .degrees(Double(dragOffset) / 20)
+            let scale: CGFloat = 1 - min(abs(dragOffset) / 1200, 0.08)
+
+            return ZStack {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(cardGradient)
+                    .overlay(alignment: .topTrailing) {
+                        Image(systemName: BookCatalog.symbolName(for: movie))
+                            .font(.system(size: 118, weight: .bold))
+                            .foregroundStyle(Color.white.opacity(0.08))
+                            .padding(.top, 22)
+                            .padding(.trailing, 18)
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    }
+
+                VStack(spacing: 18) {
+                    cover
+                        .frame(width: 172, height: 258)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                        }
+                        .shadow(color: Color.black.opacity(0.24), radius: 16, x: 0, y: 10)
+
+                    VStack(spacing: 9) {
+                        Text(genreText.uppercased())
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Color.white.opacity(0.72))
+                            .lineLimit(1)
+
+                        Text(movie.title)
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(3)
+                            .multilineTextAlignment(.center)
+
+                        Text(authorText)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(Color.white.opacity(0.78))
+                            .lineLimit(1)
+
+                        if movie.year > 0 {
+                            Label(String(movie.year), systemImage: "calendar")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Color.white.opacity(0.78))
+                        }
+                    }
+                    .padding(.horizontal, 22)
+                }
+                .padding(.vertical, 28)
+            }
+            .frame(width: 320, height: 500)
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        dragOffset = value.translation.width
+                    }
+                    .onEnded { _ in
+                        let threshold: CGFloat = 90
+                        if dragOffset < -threshold {
+                            onSwipeLeft(movie)
+                        } else if dragOffset > threshold {
+                            onSwipeRight(movie)
+                        }
+                        withAnimation(.spring(response: 0.45, dampingFraction: 0.7)) { dragOffset = 0 }
+                    }
+            )
+            .animation(.interactiveSpring(), value: dragOffset)
+            .transition(cardTransition)
+            .offset(x: dragOffset)
+            .rotationEffect(rotation)
+            .scaleEffect(scale)
+        }
+
+        @ViewBuilder
+        private var cover: some View {
+            if let url = movie.posterURL {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        coverPlaceholder
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        coverPlaceholder
+                    @unknown default:
+                        coverPlaceholder
+                    }
+                }
+            } else if !movie.posterName.isEmpty {
+                Image(movie.posterName)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                coverPlaceholder
+            }
+        }
+
+        private var coverPlaceholder: some View {
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.28),
+                        Color.white.opacity(0.10)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                VStack(spacing: 12) {
+                    Image(systemName: BookCatalog.symbolName(for: movie))
+                        .font(.system(size: 42, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.78))
+
+                    Text(movie.title)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color.white.opacity(0.82))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(4)
+                        .padding(.horizontal, 12)
+                }
+            }
+        }
+
+        private var cardGradient: LinearGradient {
+            let colors = palette(for: movie)
+            return LinearGradient(
+                colors: colors,
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+
+        private func palette(for movie: Movie) -> [Color] {
+            let palettes: [[Color]] = [
+                [Color(red: 0.10, green: 0.34, blue: 0.25), Color(red: 0.16, green: 0.66, blue: 0.44)],
+                [Color(red: 0.18, green: 0.28, blue: 0.42), Color(red: 0.25, green: 0.52, blue: 0.62)],
+                [Color(red: 0.32, green: 0.22, blue: 0.16), Color(red: 0.66, green: 0.43, blue: 0.24)],
+                [Color(red: 0.26, green: 0.22, blue: 0.38), Color(red: 0.48, green: 0.42, blue: 0.66)]
+            ]
+            let index = abs(movie.title.unicodeScalars.reduce(0) { $0 + Int($1.value) }) % palettes.count
+            return palettes[index]
         }
     }
 
