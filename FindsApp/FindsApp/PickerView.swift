@@ -36,7 +36,7 @@ struct PickerView: View {
     @State private var localWatchlist: Set<String> = []
     @State private var localFavorites: Set<String> = []
 
-    // Rating & Lists state
+    
     @State private var isShowingRatingSheet: Bool = false
     @State private var tempRating: Double = 0
     @State private var userPreviousRating: Double? = nil
@@ -48,14 +48,14 @@ struct PickerView: View {
     @State private var listsListener: ListenerRegistration? = nil
     @State private var listPendingDeletion: CustomUserList? = nil
 
-    // Track current profileId for custom lists usage
+    
     @State private var currentProfileId: String? = nil
 
     private var isInAnyCustomListForCurrent: Bool {
         !selectedLists.isEmpty
     }
 
-    // Helpers to reflect dynamic states (fallbacks if VM doesn't expose sets)
+    
     private func isWatched(_ movie: Movie) -> Bool {
         let type = (movie.mediaType ?? "movie").lowercased()
         let key = "\(type):\(movie.id)"
@@ -377,8 +377,8 @@ struct PickerView: View {
         }
 
         private func selectedListsReset() {
-            // This method is intentionally left as a placeholder to match previous behavior
-            // Actual reset happens in the parent when missing profile info.
+            
+            
         }
     }
 
@@ -809,7 +809,7 @@ struct PickerView: View {
                 }
             }
             .onDisappear {
-                // The listener is managed by the parent view; nothing to remove here.
+                
             }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
@@ -960,7 +960,7 @@ struct PickerView: View {
         navigationContent
         .task {
             if movies.isEmpty { loadMovies() }
-            // Preload list selections for current movie if available
+            
             refreshListsAndRatingsIfPossible()
         }
         .onChange(of: kind) { _ in
@@ -968,7 +968,7 @@ struct PickerView: View {
         }
     }
     
-    // MARK: - Swipe decisions persistence
+    
     private enum SwipeDecision: String { case recommend, not_recommend }
 
     private func saveSwipeDecision(for movie: Movie, decision: SwipeDecision) async {
@@ -977,7 +977,7 @@ struct PickerView: View {
         let key = "\(type):\(movie.id)"
         let db = Firestore.firestore()
 
-        // Write ONLY to specific collections
+        
         let targetCollection = (decision == .recommend) ? "pickerDecisionsRecommended" : "pickerDecisionsNotRecommended"
         let targetDoc = db.collection("users").document(uid).collection(targetCollection).document(key)
 
@@ -992,14 +992,14 @@ struct PickerView: View {
             print("[Picker Swipe] save failed:", error.localizedDescription)
         }
 
-        // Clean up legacy common collection if present (no longer needed)
+        
         let legacyCommon = db.collection("users").document(uid).collection("pickerDecisions").document(key)
-        do { try await legacyCommon.delete() } catch { /* ignore if not exists */ }
+        do { try await legacyCommon.delete() } catch {  }
     }
 
-    // MARK: - Lists helpers
-    // NOTE: New Firestore structure: users/{userId}/profiles/{profileId}/lists/{listId}
-    // All functions below require profileId, and will abort or clear UI if missing.
+    
+    
+    
 
     private func startListsListener(userId: String, profileId: String, movie: Movie) {
         let ref = Firestore.firestore()
@@ -1099,14 +1099,14 @@ struct PickerView: View {
             try await db.collection("users").document(userId)
                 .collection("profiles").document(profileId)
                 .collection("lists").document(listID).delete()
-            // If the deleted list was selected, remove it locally
+            
             await MainActor.run { self.selectedLists.remove(listID) }
         } catch {
             print("[Picker Lists] delete error for list=\(listID):", error.localizedDescription)
         }
     }
 
-    // New helper added here:
+    
     private func fetchRecentlyDislikedIDs(uid: String) async -> Set<Int> {
         let db = Firestore.firestore()
         let sevenDaysAgo = Date().addingTimeInterval(-7 * 24 * 60 * 60)
@@ -1124,10 +1124,10 @@ struct PickerView: View {
         }
     }
     
-    // MARK: - Rating helpers with profile-specific Firestore storage
+    
     
     private func fetchUserRatingForCurrent() async {
-        // Changed to profile-specific rating storage
+        
         guard let uid = authVM.user?.id, let profileId = currentProfileId, let movie = movies[safe: currentIndex] else { return }
         let type = (movie.mediaType ?? "movie").lowercased()
         let db = Firestore.firestore()
@@ -1156,7 +1156,7 @@ struct PickerView: View {
     }
 
     private func submitRating(_ value: Double) async {
-        // Changed to profile-specific rating storage
+        
         guard let uid = authVM.user?.id, let profileId = currentProfileId, let movie = movies[safe: currentIndex] else { return }
         let type = (movie.mediaType ?? "movie").lowercased()
         let db = Firestore.firestore()
@@ -1174,7 +1174,7 @@ struct PickerView: View {
             await MainActor.run {
                 self.userPreviousRating = value
             }
-            // Optionally print debug info
+            
             print("[Picker Rating] submit success for profile-specific rating")
         } catch {
             print("[Picker Rating] submit failed:", error.localizedDescription)
@@ -1182,7 +1182,7 @@ struct PickerView: View {
     }
 
     private func removeRating() async {
-        // Changed to profile-specific rating storage
+        
         guard let uid = authVM.user?.id, let profileId = currentProfileId, let movie = movies[safe: currentIndex], let _ = userPreviousRating else { return }
         let type = (movie.mediaType ?? "movie").lowercased()
         let db = Firestore.firestore()
@@ -1208,7 +1208,7 @@ struct PickerView: View {
         }
     }
 
-    // Centralized refresh helper to reduce repeated complex closures
+    
     private func refreshListsAndRatingsIfPossible() {
         if let uid = authVM.user?.id,
            let profileId = currentProfileId,
@@ -1248,12 +1248,12 @@ struct PickerView: View {
                             results.append(res)
                         }
                     }
-                    // Flatten results
+                    
                     var combined: [Movie] = []
                     for pageResults in results {
                         combined.append(contentsOf: pageResults)
                     }
-                    // Deduplicate by id
+                    
                     var seen: Set<Int> = []
                     var deduped: [Movie] = []
                     for m in combined {
@@ -1262,10 +1262,10 @@ struct PickerView: View {
                             deduped.append(m)
                         }
                     }
-                    // Shuffle after dedupe
+                    
                     var shuffled = deduped
                     shuffled.shuffle()
-                    // Filter out recently disliked
+                    
                     let filtered: [Movie]
                     if let uid = authVM.user?.id {
                         let disliked = await fetchRecentlyDislikedIDs(uid: uid)
@@ -1290,12 +1290,12 @@ struct PickerView: View {
                             results.append(res)
                         }
                     }
-                    // Flatten results
+                    
                     var combined: [Movie] = []
                     for pageResults in results {
                         combined.append(contentsOf: pageResults)
                     }
-                    // Deduplicate by id
+                    
                     var seen: Set<Int> = []
                     var deduped: [Movie] = []
                     for m in combined {
@@ -1304,10 +1304,10 @@ struct PickerView: View {
                             deduped.append(m)
                         }
                     }
-                    // Shuffle after dedupe
+                    
                     var shuffled = deduped
                     shuffled.shuffle()
-                    // Filter out recently disliked
+                    
                     let filtered: [Movie]
                     if let uid = authVM.user?.id {
                         let disliked = await fetchRecentlyDislikedIDs(uid: uid)
@@ -1376,7 +1376,7 @@ struct PickerView: View {
     }
 }
 
-// Safe array subscript for preview and logic
+
 private extension Array {
     subscript(safe index: Int) -> Element? {
         (startIndex <= index && index < endIndex) ? self[index] : nil

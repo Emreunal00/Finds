@@ -1,6 +1,6 @@
 import Foundation
 
-// MARK: - TMDb API helper
+
 
 struct TMDBAPI {
     static let baseURL = URL(string: "https://api.themoviedb.org/3")!
@@ -15,7 +15,7 @@ struct TMDBAPI {
     }
 }
 
-// MARK: - TMDb DTOs
+
 
 struct TMDBMovieResponse: Codable {
     let page: Int?
@@ -35,7 +35,7 @@ struct TMDBMovie: Codable {
     let overview: String?
     let genreIDs: [Int]?
 
-    // NEW: popularity
+    
     let popularity: Double?
 }
 
@@ -47,7 +47,7 @@ struct TMDBMultiSearchResponse: Codable {
 }
 
 struct TMDBMultiResult: Codable {
-    let mediaType: String?      // "movie", "tv", "person", ...
+    let mediaType: String?      
     let id: Int
     let title: String?
     let name: String?
@@ -58,7 +58,7 @@ struct TMDBMultiResult: Codable {
     let overview: String?
     let genreIDs: [Int]?
 
-    // NEW: popularity
+    
     let popularity: Double?
 }
 
@@ -80,7 +80,7 @@ struct TMDBTVDetail: Codable {
     let id: Int
     let episodeRunTime: [Int]?
 
-    // NEW: Created by (for TV shows)
+    
     let createdBy: [TMDBCreatedBy]?
 }
 
@@ -92,7 +92,7 @@ struct TMDBCreatedBy: Codable {
     let profilePath: String?
 }
 
-// Combined credits (already used elsewhere)
+
 struct TMDBCombinedCredits: Codable {
     let id: Int
     let cast: [TMDBCombinedCast]
@@ -125,7 +125,7 @@ struct TMDBCombinedCrew: Codable {
     let genreIDs: [Int]?
 }
 
-// NEW: Credits DTOs for movie/tv credits endpoints
+
 struct TMDBCredits: Codable {
     let id: Int?
     let cast: [TMDBCastMember]
@@ -148,7 +148,7 @@ struct TMDBCrewMember: Codable {
     let profilePath: String?
 }
 
-// MARK: - Mapping to app model
+
 
 extension TMDBMovie {
     func toMovie() -> Movie {
@@ -172,7 +172,7 @@ extension TMDBMovie {
             summary: overview ?? "",
             posterURL: posterURL,
             durationMinutes: nil,
-            mediaType: "movie", // this struct represents movie endpoint items
+            mediaType: "movie", 
             cast: nil,
             directors: nil,
             popularity: popularity

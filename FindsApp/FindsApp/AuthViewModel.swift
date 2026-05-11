@@ -7,7 +7,7 @@ import FirebaseFirestore
 final class AuthViewModel: ObservableObject {
     @Published var user: UserProfile?
 
-    /// Currently selected user profile (if available)
+    
     var currentProfile: Profile? {
         guard let user = user, let selectedID = user.selectedProfileID else { return user?.profiles.first }
         return user.profiles.first(where: { $0.id == selectedID }) ?? user.profiles.first
@@ -86,21 +86,21 @@ final class AuthViewModel: ObservableObject {
         return updatedUser
     }
 
-    // MARK: - Profile Management
+    
 
-    /// Selects active profile by id and persists to user
+    
     func selectProfile(_ profileID: String) {
         guard var user = user else { return }
         user.selectedProfileID = profileID
         self.user = user
-        // Optionally persist to backend
+        
         Task {
             let repo = UserProfileRepository()
             try? await repo.createOrMerge(user)
         }
     }
 
-    /// Adds a new profile (with optional displayName and photoURL)
+    
     func addProfile(displayName: String?, photoURL: String?) async {
         guard var user = user else { return }
         var profiles = user.profiles
@@ -113,7 +113,7 @@ final class AuthViewModel: ObservableObject {
         try? await repo.createOrMerge(user)
     }
 
-    /// Deletes a profile by id (switches to another if needed)
+    
     func deleteProfile(_ profileID: String) async throws {
         guard var user = user else { return }
         guard user.profiles.count > 1 else { return }
@@ -138,7 +138,7 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Auth
+    
 
     func signUp(email: String, password: String, displayName: String?) async {
         isLoading = true
@@ -212,7 +212,7 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Profile updates
+    
 
     func updateDisplayName(_ newName: String) async {
         guard let uid = service.currentUID else { self.errorMessage = "No active session."; return }
@@ -224,14 +224,14 @@ final class AuthViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            // Update Firebase Auth displayName
+            
             if let user = Auth.auth().currentUser {
                 let change = user.createProfileChangeRequest()
                 change.displayName = trimmed
                 try await change.commitChanges()
             }
 
-            // Merge into Firestore profile
+            
             var current = try await service.fetchProfile(uid: uid)
             if let selectedID = current.selectedProfileID, let idx = current.profiles.firstIndex(where: { $0.id == selectedID }) {
                 current.profiles[idx].displayName = trimmed
@@ -241,7 +241,7 @@ final class AuthViewModel: ObservableObject {
             let repo = UserProfileRepository()
             try await repo.createOrMerge(current)
 
-            // Refresh local state
+            
             self.user = try await service.fetchProfile(uid: uid)
             debugPrint("[Auth] updateDisplayName success -> \(trimmed)")
         } catch {
@@ -257,14 +257,14 @@ final class AuthViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            // Update Firebase Auth photoURL (optional)
+            
             if let user = Auth.auth().currentUser, let photoURL = URL(string: url) {
                 let change = user.createProfileChangeRequest()
                 change.photoURL = photoURL
                 try await change.commitChanges()
             }
 
-            // Merge into Firestore
+            
             var current = try await service.fetchProfile(uid: uid)
             if let selectedID = current.selectedProfileID, let idx = current.profiles.firstIndex(where: { $0.id == selectedID }) {
                 current.profiles[idx].photoURL = url
@@ -274,7 +274,7 @@ final class AuthViewModel: ObservableObject {
             let repo = UserProfileRepository()
             try await repo.createOrMerge(current)
 
-            // Refresh local state
+            
             self.user = try await service.fetchProfile(uid: uid)
             debugPrint("[Auth] updatePhotoURL success")
         } catch {
@@ -283,7 +283,7 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
-    // MARK: - List toggles (typed entries)
+    
 
     func toggleFavorite(movieID: Int, mediaType: String, externalContentID: String? = nil) async {
         guard let uid = service.currentUID, var user = self.user else {
@@ -302,7 +302,7 @@ final class AuthViewModel: ObservableObject {
 
         if let idx = profile.favoritesEntries.firstIndex(where: { $0.id == movieID && $0.type.lowercased() == type }) {
             do {
-                // Update the profile's favoritesEntries
+                
                 updatedUser.profiles = updatedUser.profiles.map { p in
                     guard p.id == profile.id else { return p }
                     var copy = p
@@ -527,7 +527,7 @@ final class AuthViewModel: ObservableObject {
     }
 }
 
-// MARK: - Error Mapping
+
 private extension AuthViewModel {
     struct MappedError { let userMessage: String; let debugDescription: String }
     static func mapAuthError(_ error: Error) -> MappedError {

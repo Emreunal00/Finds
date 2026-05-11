@@ -4,7 +4,7 @@ import SwiftUI
 
 private final class WatchedRatingsCache: ObservableObject {
     static let shared = WatchedRatingsCache()
-    @Published private(set) var averages: [String: Double] = [:] // key: "type:id"
+    @Published private(set) var averages: [String: Double] = [:] 
     private var ongoing: Set<String> = []
 
     func key(for movie: Movie) -> String { "\((movie.mediaType ?? "movie").lowercased()):\(movie.id)" }
@@ -50,7 +50,7 @@ struct WatchedListView: View {
     @State private var errorMessage: String?
     @State private var sort: SortOption = .addedNewestFirst
 
-    // Original entries order (for added order)
+    
     @State private var originalEntries: [WatchedEntry] = []
     @StateObject private var ratingsCache = WatchedRatingsCache.shared
 
@@ -59,13 +59,13 @@ struct WatchedListView: View {
 
     private let service: MovieServicing = MovieService()
 
-    // Updated to use currentProfile instead of user for watchedEntries
+    
     private var entriesRaw: [WatchedEntry] {
         guard let profile = authVM.currentProfile else { return [] }
         if !profile.watchedEntries.isEmpty {
             return profile.watchedEntries
         } else {
-            // Legacy fallback: deprecated, kept for migration only
+            
             return authVM.user?.watchedIDs.map { WatchedEntry(id: $0, type: "movie") } ?? []
         }
     }
@@ -127,9 +127,9 @@ struct WatchedListView: View {
             }
         }
         .task { await loadAll() }
-        // Reload when listsVersion changes
+        
         .onChange(of: authVM.listsVersion) { _ in Task { await loadAll() } }
-        // Reload when currentProfile changes
+        
         .onChange(of: authVM.currentProfile) { _ in Task { await loadAll() } }
         .overlay {
             if showingDeletionConfirm, let movie = pendingDeletionMovie {
@@ -210,14 +210,14 @@ struct WatchedListView: View {
         }
     }
 
-    // MARK: - Deletion
+    
 
     private func removeFromWatched(_ movie: Movie) {
-        // Optimistically update local UI
+        
         movies.removeAll { $0.id == movie.id }
         originalEntries.removeAll { $0.id == movie.id }
 
-        // Persist the change (AuthViewModel handles toggling)
+        
         Task { @MainActor in
             await authVM.toggleWatched(movieID: movie.id, type: (movie.mediaType ?? "movie"), externalContentID: movie.externalContentID)
         }
@@ -226,7 +226,7 @@ struct WatchedListView: View {
     private func sortedMovies() -> [Movie] {
         switch sort {
         case .addedNewestFirst:
-            // newest-first: originalEntries.reversed()
+            
             let order = Array(originalEntries.reversed()).map { $0.id }
             let map = Dictionary(uniqueKeysWithValues: movies.map { ($0.id, $0) })
             return order.compactMap { map[$0] }

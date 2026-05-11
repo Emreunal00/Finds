@@ -5,7 +5,7 @@ import SwiftUI
 private final class WatchlistRatingsCache: ObservableObject {
     
     static let shared = WatchlistRatingsCache()
-    @Published private(set) var averages: [String: Double] = [:] // key: "type:id"
+    @Published private(set) var averages: [String: Double] = [:] 
     private var ongoing: Set<String> = []
 
     func key(for movie: Movie) -> String { "\((movie.mediaType ?? "movie").lowercased()):\(movie.id)" }
@@ -61,13 +61,13 @@ struct WatchlistListView: View {
 
     private let service: MovieServicing = MovieService()
 
-    // Use watchlistEntries from currentProfile instead of user, fallback to legacy user.watchlistIDs for migration only
+    
     private var entriesRaw: [WatchedEntry] {
         guard let profile = authVM.currentProfile else { return [] }
         if !profile.watchlistEntries.isEmpty {
             return profile.watchlistEntries
         } else {
-            // Legacy fallback: deprecated, kept for migration only
+            
             return authVM.user?.watchlistIDs.map { WatchedEntry(id: $0, type: "movie") } ?? []
         }
     }
@@ -140,7 +140,7 @@ struct WatchlistListView: View {
         }
         .task { await loadAll() }
         .onChange(of: authVM.listsVersion) { _ in Task { await loadAll() } }
-        // Reload watchlist when the current profile changes
+        
         .onChange(of: authVM.currentProfile) { _ in Task { await loadAll() } }
         .overlay {
             if showingDeletionConfirm, let movie = pendingDeletionMovie {
@@ -228,16 +228,16 @@ struct WatchlistListView: View {
         movies = fetched
     }
 
-    // MARK: - Deletion
+    
 
     private func removeFromWatchlist(_ movie: Movie) {
-        // Optimistically update local UI
+        
         movies.removeAll { $0.id == movie.id }
         originalEntries.removeAll { $0.id == movie.id }
 
-        // Persist the change (AuthViewModel handles toggling)
+        
         Task { @MainActor in
-            // Use currentProfile context for removal
+            
             await authVM.toggleWatchlist(movieID: movie.id, mediaType: (movie.mediaType ?? "movie"), externalContentID: movie.externalContentID)
         }
     }

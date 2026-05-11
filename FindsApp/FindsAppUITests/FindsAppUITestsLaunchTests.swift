@@ -1,9 +1,9 @@
-//
-//  FindsAppUITestsLaunchTests.swift
-//  FindsAppUITests
-//
-//  Created by Emre ünal on 11.12.2025.
-//
+
+
+
+
+
+
 
 import XCTest
 
@@ -23,7 +23,7 @@ final class FindsAppUITestsLaunchTests: XCTestCase {
         app.launchArguments += ["-UITestMode", "1"]
         app.launch()
 
-        // Wait for main UI (e.g., Tab Bar) to appear to avoid onboarding/login
+        
         let tabBar = app.tabBars.firstMatch
         _ = tabBar.waitForExistence(timeout: 8)
 

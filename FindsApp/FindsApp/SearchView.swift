@@ -4,7 +4,7 @@ import SwiftUI
 
 private final class SearchRatingsCache: ObservableObject {
     static let shared = SearchRatingsCache()
-    @Published private(set) var averages: [String: Double] = [:] // key: "type:id"
+    @Published private(set) var averages: [String: Double] = [:] 
     private var ongoing: Set<String> = []
 
     func key(for movie: Movie) -> String { "\((movie.mediaType ?? "movie").lowercased()):\(movie.id)" }
@@ -60,7 +60,7 @@ struct SearchView: View {
                 .animation(.default, value: showYearFilterWhenSearched)
 
                 VStack(spacing: 12) {
-                    Spacer(minLength: 90) // leave space for floating bar
+                    Spacer(minLength: 90) 
                     content
                 }
                 .padding(.horizontal)
@@ -73,7 +73,7 @@ struct SearchView: View {
                 }
             }
             .onChange(of: resetToken) { _ in
-                // Aynı tab tekrar seçildiğinde Search başlangıç haline dönsün
+                
                 performFullReset()
             }
         }
@@ -115,13 +115,13 @@ struct SearchView: View {
             .padding(.horizontal, 8)
     }
 
-    // MARK: - Search controls
+    
     private var searchControlsTop: some View {
         HStack(spacing: 10) {
-            // Arama alanı (yanında ekstra arama butonu yok) + overlay ile "çarpı" butonu
+            
             HStack(spacing: 12) {
                 TextField("Search for a movie, TV show, or book…", text: $vm.keyword)
-                    .font(.system(size: 17)) // Yazı tipini büyüt
+                    .font(.system(size: 17)) 
                     .textInputAutocapitalization(.never)
                     .submitLabel(.search)
                     .focused($searchFocused)
@@ -150,7 +150,7 @@ struct SearchView: View {
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundStyle(.secondary)
-                                    .imageScale(.large) // ikon biraz büyüsün
+                                    .imageScale(.large) 
                                     .padding(.trailing, 4)
                             }
                             .buttonStyle(.plain)
@@ -158,20 +158,20 @@ struct SearchView: View {
                         }
                     }
             }
-            // Removed padding and background from here to be applied in floatingSearchBar container
+            
 
             Spacer(minLength: 8)
         }
         .font(.footnote)
     }
 
-    // Yıl filtresi ne zaman görünsün?
+    
     private var showYearFilterWhenSearched: Bool {
-        // Arama tetiklendiyse, ya da sonuç/hata oluştuysa veya bir genre seçildiyse göster
+        
         hasSearched || !vm.results.isEmpty || vm.error != nil || vm.selectedGenreID != nil
     }
 
-    // Clear butonunun görünmesi için koşul
+    
     private var showClearButton: Bool {
         let hasKeyword = !vm.keyword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return hasKeyword || vm.selectedGenreID != nil || vm.selectedYear != nil || hasSearched || !vm.results.isEmpty || vm.error != nil
@@ -186,7 +186,7 @@ struct SearchView: View {
         hasSearched = false
     }
 
-    // MARK: - Content
+    
     @ViewBuilder
     private var content: some View {
         if vm.isLoading {
@@ -255,7 +255,7 @@ struct SearchView: View {
         }
     }
 
-    // MARK: - Genres grid
+    
     private var genresGrid: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Genres")
@@ -288,7 +288,7 @@ struct SearchView: View {
         .padding(.top, 8)
     }
 
-    // MARK: - Poster helpers
+    
     @ViewBuilder
     private func poster(for movie: Movie) -> some View {
         if let url = movie.posterURL {

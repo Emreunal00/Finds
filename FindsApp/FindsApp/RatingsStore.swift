@@ -1,11 +1,11 @@
-// RatingsStore.swift
-// Basit yerel kalıcılık: UserDefaults kullanarak kullanıcı bazlı film puanlarını ve toplu veriyi saklar
+
+
 
 import Foundation
 
 struct RatingsStore {
-    private static let userRatingsKey = "user_movie_ratings_v1" // [compositeUserKey: Double]
-    private static let aggregatesKey = "movie_aggregates_v1"     // [compositeMovieKey: Aggregate]
+    private static let userRatingsKey = "user_movie_ratings_v1" 
+    private static let aggregatesKey = "movie_aggregates_v1"     
 
     struct Aggregate: Codable {
         var total: Double
@@ -13,7 +13,7 @@ struct RatingsStore {
         var average: Double { count > 0 ? total / Double(count) : 0 }
     }
 
-    // In-memory cache
+    
     private static var userCache: [String: Double] = {
         if let data = UserDefaults.standard.data(forKey: userRatingsKey),
            let decoded = try? JSONDecoder().decode([String: Double].self, from: data) {
@@ -38,7 +38,7 @@ struct RatingsStore {
         "\(type.lowercased()):\(movieID)"
     }
 
-    // MARK: - User rating ops
+    
     static func rating(for userID: String, movieID: Int, type: String) -> Double? {
         userCache[userKey(userID: userID, movieID: movieID, type: type)]
     }
@@ -53,7 +53,7 @@ struct RatingsStore {
         persistUser()
     }
 
-    // MARK: - Aggregates ops
+    
     static func aggregate(for movieID: Int, type: String) -> Aggregate {
         aggregatesCache[movieKey(movieID: movieID, type: type)] ?? Aggregate(total: 0, count: 0)
     }
@@ -74,7 +74,7 @@ struct RatingsStore {
         persistAggregates()
     }
 
-    // MARK: - Persistence
+    
     private static func persistUser() {
         if let data = try? JSONEncoder().encode(userCache) {
             UserDefaults.standard.set(data, forKey: userRatingsKey)

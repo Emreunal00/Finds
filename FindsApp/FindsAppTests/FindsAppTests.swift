@@ -1,9 +1,9 @@
-//
-//  FindsAppTests.swift
-//  FindsAppTests
-//
-//  Created by Emre ünal on 11.12.2025.
-//
+
+
+
+
+
+
 
 import Testing
 import Foundation
@@ -38,7 +38,7 @@ struct SearchViewModelTests_Suite {
         await vm.search()
         #expect(!vm.results.isEmpty)
 
-        // Clear keyword -> should reset
+        
         vm.keyword = ""
         try await Task.sleep(nanoseconds: 50_000_000)
         #expect(vm.results.isEmpty)
@@ -62,10 +62,9 @@ struct PerformanceTests {
         let start = CFAbsoluteTimeGetCurrent()
         await vm.search()
         let elapsed = CFAbsoluteTimeGetCurrent() - start
-        // Optional: assert it runs within a reasonable time window if desired
+        
         _ = elapsed
 
         #expect(!vm.results.isEmpty)
     }
 }
-

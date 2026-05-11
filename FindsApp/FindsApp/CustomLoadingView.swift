@@ -7,7 +7,7 @@ struct CustomLoadingView: View {
     var body: some View {
         VStack(spacing: 12) {
             ZStack {
-                // Neon glow behind spinner
+                
                 Circle()
                     .fill(
                         RadialGradient(colors: [Color.green.opacity(0.45), Color.green.opacity(0.15), .green],
@@ -21,7 +21,7 @@ struct CustomLoadingView: View {
                     .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: animate)
                     .accessibilityHidden(true)
 
-                // Spinner strokes
+                
                 ZStack {
                     SpinnerArc(startAngle: .degrees(0), endAngle: .degrees(110))
                         .stroke(Color.white, style: StrokeStyle(lineWidth: 7, lineCap: .round))
@@ -54,7 +54,7 @@ struct CustomLoadingView: View {
     }
 }
 
-// Yardımcı Arc shape’i
+
 struct SpinnerArc: Shape {
     var startAngle: Angle
     var endAngle: Angle

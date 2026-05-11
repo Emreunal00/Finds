@@ -290,7 +290,7 @@ private struct MovieQuoteQuizPopup: View {
                         Text("Guess the film from the line.")
                             .font(.headline)
                             .foregroundStyle(QuizTheme.primary)
-                        Text("Alintiyi okuyup dogru filmi isaretle.")
+                        Text("Read the quote and choose the correct movie.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -343,10 +343,10 @@ private struct MovieQuoteQuizPopup: View {
 
     private var summaryView: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Quiz tamamlandi")
+            Text("Quiz complete")
                 .font(.headline)
 
-            Text("Toplam \(score) dogru cevap verdin.")
+            Text("You answered \(score) questions correctly.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -409,7 +409,7 @@ private struct MovieQuoteQuizPopup: View {
             }
 
             if selectedOption != nil {
-                Text(selectedOption == question.answer ? "Dogru cevap." : "Dogru cevap: \(question.answer)")
+                Text(selectedOption == question.answer ? "Correct answer." : "Correct answer: \(question.answer)")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(selectedOption == question.answer ? QuizTheme.primary : .secondary)
 

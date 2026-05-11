@@ -10,15 +10,15 @@ struct Movie: Identifiable, Equatable, Codable {
     var summary: String
     var posterURL: URL?
     var durationMinutes: Int?
-    // NEW: mediaType ("movie" or "tv")
+    
     var mediaType: String?
     var externalContentID: String?
 
-    // NEW: Credits fields
+    
     var cast: [String]?
     var directors: [String]?
 
-    // NEW: Popularity (for sorting search results)
+    
     var popularity: Double?
 
     init(

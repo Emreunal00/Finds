@@ -32,7 +32,7 @@ struct Hello: View {
             .collection("onboardingSelections").document(k)
 
         if isSelected {
-            // Upsert selection document
+            
             var data: [String: Any] = [
                 "movieId": movie.id,
                 "type": (movie.mediaType ?? "movie").lowercased(),
@@ -50,7 +50,7 @@ struct Hello: View {
                 }
             }
         } else {
-            // Remove selection document
+            
             isSaving = true
             docRef.delete { err in
                 isSaving = false

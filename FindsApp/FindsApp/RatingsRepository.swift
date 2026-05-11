@@ -1,5 +1,5 @@
-// RatingsRepository.swift
-// Firestore üzerinde rating aggregate ve kullanıcı rating işlemleri
+
+
 
 import Foundation
 import FirebaseFirestore
@@ -35,7 +35,7 @@ final class RatingsRepository {
                 let userRef = aggRef.collection("userRatings").document(uid)
 
                 do {
-                    // Aggregate read (init if needed)
+                    
                     var aggSnap: DocumentSnapshot
                     do {
                         aggSnap = try txn.getDocument(aggRef)
@@ -46,7 +46,7 @@ final class RatingsRepository {
                     let currentTotal = (aggSnap.data()? ["total"] as? Double) ?? 0.0
                     let currentCount = (aggSnap.data()? ["count"] as? Int) ?? 0
 
-                    // User rating read
+                    
                     let userSnap = try? txn.getDocument(userRef)
                     let old = (userSnap?.data()? ["rating"] as? Double)
 
@@ -57,10 +57,10 @@ final class RatingsRepository {
                     txn.setData(["total": newTotal, "count": newCount], forDocument: aggRef, merge: true)
                     txn.setData(["rating": value, "updatedAt": FieldValue.serverTimestamp()], forDocument: userRef, merge: true)
 
-                    // Return the aggregate as the transaction result
+                    
                     return RatingAggregate(total: newTotal, count: newCount)
                 } catch {
-                    // Propagate error via errPtr and return nil
+                    
                     if let errPtr {
                         errPtr.pointee = error as NSError
                     }
@@ -86,33 +86,33 @@ final class RatingsRepository {
                 let userRef = aggRef.collection("userRatings").document(uid)
 
                 do {
-                    // Read current aggregate
+                    
                     var aggSnap: DocumentSnapshot
                     do {
                         aggSnap = try txn.getDocument(aggRef)
                     } catch {
-                        // If aggregate doesn't exist, nothing to remove
+                        
                         if let errPtr { errPtr.pointee = NSError(domain: "RatingsRepository", code: -2, userInfo: [NSLocalizedDescriptionKey: "Aggregate not found"]) }
                         return nil
                     }
                     let currentTotal = (aggSnap.data()? ["total"] as? Double) ?? 0.0
                     let currentCount = (aggSnap.data()? ["count"] as? Int) ?? 0
 
-                    // Read user rating to confirm existence (optional, we already have previousValue)
+                    
                     let userSnap = try? txn.getDocument(userRef)
                     let existing = (userSnap?.data()? ["rating"] as? Double)
 
                     guard existing != nil else {
-                        // No user rating to delete
+                        
                         let aggregate = RatingAggregate(total: currentTotal, count: currentCount)
                         return aggregate
                     }
 
-                    // Compute new aggregate by removing previous value and decrementing count
+                    
                     let newTotal = currentTotal - previousValue
                     let newCount = max(0, currentCount - 1)
 
-                    // Update aggregate and delete user rating doc
+                    
                     txn.setData(["total": newTotal, "count": newCount], forDocument: aggRef, merge: true)
                     txn.deleteDocument(userRef)
 

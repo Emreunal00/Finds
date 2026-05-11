@@ -1,4 +1,4 @@
-// MovieService.swift
+
 import Foundation
 
 protocol MovieServicing {
@@ -12,18 +12,18 @@ protocol MovieServicing {
     func fetchMovieBasic(id: Int) async throws -> Movie
     func fetchTVBasic(id: Int) async throws -> Movie
 
-    // NEW: TV sections
+    
     func getTrendingTV(page: Int) async throws -> [Movie]
     func getSuggestionsTV(page: Int) async throws -> [Movie]
 
-    // NEW: Mixed discover by genre (movie + tv)
+    
     func discoverMixed(genreID: Int, page: Int) async throws -> [Movie]
 
-    // NEW: Credits (cast & crew)
+    
     func fetchMovieCredits(id: Int) async throws -> Credits
     func fetchTVCredits(id: Int) async throws -> Credits
 
-    // NEW: TV detail (to read created_by)
+    
     func fetchTVDetail(id: Int) async throws -> TMDBTVDetailDTO
 }
 
@@ -83,7 +83,7 @@ final class MovieService: MovieServicing {
         return movies
     }
 
-    // NEW: Trending TV
+    
     func getTrendingTV(page: Int = 1) async throws -> [Movie] {
         var comps = URLComponents(url: TMDBAPI.baseURL.appendingPathComponent("trending/tv/week"), resolvingAgainstBaseURL: false)!
         comps.queryItems = [
@@ -93,17 +93,17 @@ final class MovieService: MovieServicing {
         ]
         let url = try comps.asURL()
         let data = try await requestData(url: url, context: "trending/tv/week", maxRetries: 3, initialDelay: 0.8)
-        // Reuse TMDBMovieResponse structure for tv too (fields align for id/title-like mapping we do)
+        
         let resp = try decode(TMDBMovieResponse.self, from: data, endpoint: "trending/tv/week")
-        // Map as TV summaries (using TMDBTVSummary-like mapping is not necessary here; we treat multi result mapping style)
-        // Here we convert TMDBMovie to Movie but mark as "tv" based on firstAirDate/name if needed.
-        // Simpler: convert using TMDBMultiResult-like mapping; but we don't have it here. We’ll adapt TMDBMovie.toMovie and override mediaType.
+        
+        
+        
         var movies = resp.results.map { tm in
             var m = tm.toMovie()
             m.mediaType = "tv"
             return m
         }
-        // Enrich with TV runtimes (episodeRunTime) for first N items
+        
         let slice = Array(resp.results.prefix(maxRuntimeEnrichmentCount))
         let ids = slice.map { $0.id }
         let runtimeMap = try await fetchRuntimesLimited(ids: ids, isTV: true)
@@ -115,7 +115,7 @@ final class MovieService: MovieServicing {
         return movies
     }
 
-    // NEW: Suggested TV (Discover TV)
+    
     func getSuggestionsTV(page: Int = 1) async throws -> [Movie] {
         var comps = URLComponents(url: TMDBAPI.baseURL.appendingPathComponent("discover/tv"), resolvingAgainstBaseURL: false)!
         comps.queryItems = [
@@ -133,7 +133,7 @@ final class MovieService: MovieServicing {
             m.mediaType = "tv"
             return m
         }
-        // Optional TV runtime enrichment for first N items
+        
         let slice = Array(resp.results.prefix(maxRuntimeEnrichmentCount))
         let ids = slice.map { $0.id }
         let runtimeMap = try await fetchRuntimesLimited(ids: ids, isTV: true)
@@ -267,7 +267,7 @@ final class MovieService: MovieServicing {
         return m
     }
 
-    // MARK: - Credits
+    
     func fetchMovieCredits(id: Int) async throws -> Credits {
         var comps = URLComponents(url: TMDBAPI.baseURL.appendingPathComponent("movie/\(id)/credits"), resolvingAgainstBaseURL: false)!
         comps.queryItems = [
@@ -362,7 +362,7 @@ final class MovieService: MovieServicing {
         return result
     }
 
-    // NEW: fetch combined credits for a person and map to Movie (movie/tv only)
+    
     private func fetchCombinedCredits(personId: Int) async throws -> [Movie] {
         var comps = URLComponents(url: TMDBAPI.baseURL.appendingPathComponent("person/\(personId)/combined_credits"), resolvingAgainstBaseURL: false)!
         comps.queryItems = [
@@ -384,9 +384,9 @@ final class MovieService: MovieServicing {
         return castMovies + crewMovies
     }
 
-    // NEW: Mixed discover implementation
+    
     func discoverMixed(genreID: Int, page: Int = 1) async throws -> [Movie] {
-        // Build endpoints
+        
         func buildDiscoverURL(path: String) throws -> URL {
             var comps = URLComponents(url: TMDBAPI.baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
             comps.queryItems = [
@@ -415,7 +415,7 @@ final class MovieService: MovieServicing {
         let tvResp = try decode(TMDBMovieResponse.self, from: tvData, endpoint: "discover/tv")
 
         var movieItems = movieResp.results.map { $0.toMovie() }
-        // Enrich first N movie runtimes
+        
         movieItems = try await enrichMoviesWithRuntime(fromMovies: movieResp.results, baseMovies: movieItems)
 
         var tvItems: [Movie] = tvResp.results.map { tm in
@@ -423,7 +423,7 @@ final class MovieService: MovieServicing {
             m.mediaType = "tv"
             return m
         }
-        // Enrich first N tv runtimes
+        
         let tvSlice = Array(tvResp.results.prefix(maxRuntimeEnrichmentCount))
         let tvIDs = tvSlice.map { $0.id }
         let tvRuntimeMap = try await fetchRuntimesLimited(ids: tvIDs, isTV: true)
@@ -433,7 +433,7 @@ final class MovieService: MovieServicing {
             }
         }
 
-        // Merge and sort by popularity desc (fallback to rating then title)
+        
         var merged = movieItems + tvItems
         merged.sort { lhs, rhs in
             let lp = lhs.popularity ?? -1

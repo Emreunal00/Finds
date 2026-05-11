@@ -4,7 +4,7 @@ import Combine
 
 private final class FavoritesRatingsCache: ObservableObject {
     static let shared = FavoritesRatingsCache()
-    @Published private(set) var averages: [String: Double] = [:] // key: "type:id"
+    @Published private(set) var averages: [String: Double] = [:] 
     private var ongoing: Set<String> = []
 
     func key(for movie: Movie) -> String { "\((movie.mediaType ?? "movie").lowercased()):\(movie.id)" }
@@ -54,7 +54,7 @@ struct CustomListDetailView: View {
 
     @State private var sort: SortOption = .addedNewestFirst
 
-    // Eklenme sırası referansı
+    
     @State private var originalOrderIDs: [Int] = []
 
     private let service: MovieServicing = MovieService()
@@ -106,14 +106,14 @@ struct CustomListDetailView: View {
             }
         }
         .task { await loadItems() }
-        // Reload list when the current profile changes
+        
         .onChange(of: authVM.currentProfile) { _ in
-            // Clear current data and reload for new profile
+            
             movies = []
             originalOrderIDs = []
             Task { await loadItems() }
         }
-        // Clear data when user signs out (user id changes)
+        
         .onChange(of: authVM.user?.id) { newUserId in
             if newUserId == nil {
                 movies = []
@@ -142,7 +142,7 @@ struct CustomListDetailView: View {
         .padding(.vertical, 6)
     }
 
-    // MARK: - Sorting
+    
     private func sortedMovies() -> [Movie] {
         switch sort {
         case .addedNewestFirst:
@@ -201,7 +201,7 @@ struct CustomListDetailView: View {
         isLoading = true
         defer { isLoading = false }
 
-        // Require both userId and profileId for profile-specific data
+        
         guard let userId = authVM.user?.id else {
             errorMessage = "Not signed in"
             movies = []
@@ -218,8 +218,8 @@ struct CustomListDetailView: View {
         do {
             let db = Firestore.firestore()
 
-            // New Firestore path for profile-specific custom list items:
-            // users/{userId}/profiles/{profileId}/lists/{listId}/items
+            
+            
             let itemsRef = db.collection("users").document(userId)
                 .collection("profiles").document(profileId)
                 .collection("lists").document(list.id)

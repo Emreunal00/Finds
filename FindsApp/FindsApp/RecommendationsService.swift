@@ -11,7 +11,7 @@ struct RecommendationDTO: Decodable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        // content_id may be String or Int
+        
         if let s = try? c.decode(String.self, forKey: .content_id) {
             self.contentID = s
         } else if let i = try? c.decode(Int.self, forKey: .content_id) {
@@ -22,7 +22,7 @@ struct RecommendationDTO: Decodable {
         self.type = try? c.decode(String.self, forKey: .type)
         self.title = (try? c.decode(String.self, forKey: .title)) ?? ""
         self.posterURLString = try? c.decode(String.self, forKey: .poster_url)
-        // year may be Int or String
+        
         if let yi = try? c.decode(Int.self, forKey: .year) {
             self.year = yi
         } else if let ys = try? c.decode(String.self, forKey: .year), let yi = Int(ys) {

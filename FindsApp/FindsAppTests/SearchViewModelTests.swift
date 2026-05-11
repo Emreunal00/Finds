@@ -1,9 +1,9 @@
-//
-//  SearchViewModelTests.swift
-//  FindsApp
-//
-//  Created by Emre ünal on 11.12.2025.
-//
+
+
+
+
+
+
 
 
 import Testing
@@ -30,7 +30,7 @@ struct SearchViewModelTests {
         await vm.search()
         #expect(!vm.results.isEmpty)
 
-        vm.keyword = "" // clear
+        vm.keyword = "" 
         await Task.yield()
         #expect(vm.results.isEmpty)
         #expect(vm.selectedGenreID == nil)
@@ -54,4 +54,3 @@ struct SearchViewModelTests {
         #expect(elapsed < .seconds(2))
     }
 }
-

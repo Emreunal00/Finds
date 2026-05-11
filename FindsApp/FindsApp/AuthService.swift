@@ -10,7 +10,7 @@ protocol AuthServicing {
     func observeAuthState(_ onChange: @escaping (String?) -> Void) -> Any
     func fetchProfile(uid: String) async throws -> UserProfile
 
-    // Realtime profile listener
+    
     func observeProfile(uid: String, onChange: @escaping (Result<UserProfile, Error>) -> Void) -> Any
     func removeProfileObserver(_ token: Any)
 }
@@ -28,7 +28,7 @@ final class AuthService: AuthServicing {
 
     var currentUID: String? { auth.currentUser?.uid }
 
-    // Sign Up: only create user + write profile; do NOT block on fetching the profile
+    
     func signUp(email: String, password: String, displayName: String?) async throws -> UserProfile {
         let result = try await auth.createUser(withEmail: email, password: password)
 
@@ -39,7 +39,7 @@ final class AuthService: AuthServicing {
         }
 
         let uid = result.user.uid
-        // Write minimal profile; do not wait for read-back
+        
         let initialProfile = Profile(displayName: displayName)
         let minimalProfile = UserProfile(
             id: uid,
@@ -52,7 +52,7 @@ final class AuthService: AuthServicing {
         )
         try await userRepo.createOrMerge(minimalProfile)
 
-        // Return minimal profile; AuthViewModel will receive live updates via listener
+        
         return minimalProfile
     }
 
@@ -62,7 +62,7 @@ final class AuthService: AuthServicing {
         do {
             return try await retryFetchProfile(uid: uid, maxAttempts: 3, initialDelay: 0.2)
         } catch {
-            // If profile not found, create and retry fetch
+            
             let profile = UserProfile.empty(uid: uid, email: email)
             try await userRepo.createOrMerge(profile)
             return try await retryFetchProfile(uid: uid, maxAttempts: 3, initialDelay: 0.2)
@@ -120,7 +120,7 @@ final class AuthService: AuthServicing {
         profileListenerHandle?.remove()
     }
 
-    // MARK: - Retry helper (still used by Sign In only)
+    
 
     private func retryFetchProfile(uid: String, maxAttempts: Int = 3, initialDelay: TimeInterval = 0.2) async throws -> UserProfile {
         var attempt = 0

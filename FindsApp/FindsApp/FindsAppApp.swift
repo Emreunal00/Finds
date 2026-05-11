@@ -1,9 +1,9 @@
-//
-//  FindsAppApp.swift
-//  FindsApp
-//
-//  Created by Emre ünal on 13.10.2025.
-//
+
+
+
+
+
+
 
 import SwiftUI
 import Combine

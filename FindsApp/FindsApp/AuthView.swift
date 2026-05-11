@@ -5,11 +5,11 @@ struct AuthView: View {
 
     @State private var isSignUp = false
 
-    // Sign In
+    
     @State private var emailIn = ""
     @State private var passwordIn = ""
 
-    // Sign Up
+    
     @State private var emailUp = ""
     @State private var passwordUp = ""
     @State private var displayNameUp = ""
@@ -39,7 +39,7 @@ struct AuthView: View {
                             SecureField("Password", text: $passwordUp)
                                 .textFieldStyle(.roundedBorder)
 
-                            // Display Name REQUIRED
+                            
                             TextField("Display Name", text: $displayNameUp)
                                 .textFieldStyle(.roundedBorder)
 

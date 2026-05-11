@@ -7,7 +7,7 @@ struct CustomUserList: Identifiable, Equatable {
 }
 
 struct StarRatingView: View {
-    @Binding var rating: Double // 0.0–5.0 (yarım yıldız dahil)
+    @Binding var rating: Double 
     let starSize: CGFloat
     let maxRating: Int = 5
     var onRatingChanged: ((Double) -> Void)? = nil
@@ -41,7 +41,7 @@ struct StarRatingView: View {
                     let position = min(max(value.location.x - horizontalInset, 0), totalWidth)
                     let widthPerItem = totalWidth / CGFloat(maxRating)
                     let raw = position / widthPerItem
-                    let stepped = (raw * 2).rounded() / 2 // round to nearest 0.5
+                    let stepped = (raw * 2).rounded() / 2 
                     let newRating = min(max(stepped, 0), Double(maxRating))
                     if rating != newRating {
                         rating = newRating
@@ -129,10 +129,10 @@ struct MovieDetailView: View {
                         .padding(.top, 4)
                 }
 
-                // Credits (Created by, Directors & Cast)
+                
                 if !(createdByNames.isEmpty && directorName == nil && castNames.isEmpty) {
                     VStack(alignment: .leading, spacing: 8) {
-                        // Created by (TV only)
+                        
                         if !createdByNames.isEmpty {
                             HStack(alignment: .firstTextBaseline, spacing: 6) {
                                 Text("Created by:").font(.subheadline.weight(.semibold))
@@ -140,14 +140,14 @@ struct MovieDetailView: View {
                                     .font(.subheadline)
                             }
                         }
-                        // Director(s)
+                        
                         if let directorName {
                             HStack(alignment: .firstTextBaseline, spacing: 6) {
                                 Text("Director:").font(.subheadline.weight(.semibold))
                                 Text(directorName).font(.subheadline)
                             }
                         }
-                        // Cast with expand/collapse
+                        
                         if !castNames.isEmpty {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("Cast:").font(.subheadline.weight(.semibold))
@@ -197,7 +197,7 @@ struct MovieDetailView: View {
                     .foregroundStyle(.secondary)
 
                 StarRatingView(rating: $tempRating, starSize: 48) { newValue in
-                    // live preview inside sheet
+                    
                 }
                 .frame(height: 58)
                 HStack(spacing: 12) {
@@ -208,8 +208,8 @@ struct MovieDetailView: View {
                     Button("Save") {
                         isShowingRatingSheet = false
                         Task {
-                            await sendUserRating(tempRating) // optimistic local update
-                            await submitRating(tempRating)    // persist to backend
+                            await sendUserRating(tempRating) 
+                            await submitRating(tempRating)    
                         }
                     }
                     .buttonStyle(.borderedProminent)
@@ -237,7 +237,7 @@ struct MovieDetailView: View {
         .sheet(isPresented: $isShowingListsSheet) {
             NavigationStack {
                 VStack(spacing: 0) {
-                    // Header
+                    
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Add to Lists").font(.title3.weight(.semibold))
                         Text("Select the lists to include this title. You can also create a new list.")
@@ -247,7 +247,7 @@ struct MovieDetailView: View {
                     .padding(.horizontal)
                     .padding(.top, 16)
 
-                    // Search
+                    
                     HStack(spacing: 8) {
                         Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                         TextField("Search lists", text: Binding(
@@ -263,7 +263,7 @@ struct MovieDetailView: View {
                     .padding(.horizontal)
                     .padding(.top, 12)
 
-                    // Lists
+                    
                     Group {
                         if userLists.isEmpty {
                             VStack(spacing: 8) {
@@ -319,7 +319,7 @@ struct MovieDetailView: View {
                         }
                     }
 
-                    // Create new list
+                    
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 8) {
                             TextField("Create new list", text: $newListName)
@@ -338,7 +338,7 @@ struct MovieDetailView: View {
                     .padding(.horizontal)
                     .padding(.vertical, 12)
 
-                    // Bottom bar
+                    
                     HStack(spacing: 12) {
                         Button("Cancel") { isShowingListsSheet = false }
                             .buttonStyle(.bordered)
@@ -499,7 +499,7 @@ struct MovieDetailView: View {
                 if let runtime = movie.durationMinutes {
                     Label("\(runtime) min", systemImage: "clock").symbolRenderingMode(.hierarchical)
                 }
-                // Rating and vote count combined in one string; show 0 when no votes
+                
                 let displayAverage = voteCount > 0 ? averageRating : 0
                 Text(String(format: "%.1f / 5 (\(voteCount) vote)", displayAverage))
                     .font(.subheadline.weight(.semibold))
@@ -656,7 +656,7 @@ struct MovieDetailView: View {
                 return CustomUserList(id: doc.documentID, name: name)
             }
             self.userLists = lists
-            // Preload selections for this movie in user's lists
+            
             Task { await loadSelections(uid: uid, profileId: profileId) }
         }
     }
@@ -811,7 +811,7 @@ struct MovieDetailView: View {
         let repo = RatingsRepository()
         do {
             if let old = self.userPreviousRating {
-                // Try repository deletion and receive updated aggregate
+                
                 let agg = try await repo.deleteRating(uid: uid, movieID: movie.id, type: type, previousValue: old)
                 print("[Ratings] remove success -> count=", agg.count, " avg=", agg.average)
                 await MainActor.run {
@@ -822,7 +822,7 @@ struct MovieDetailView: View {
                     self.tempRating = 0
                 }
             } else {
-                // No previous rating: just normalize UI
+                
                 await MainActor.run {
                     self.userPreviousRating = nil
                     self.userRating = 0
@@ -831,7 +831,7 @@ struct MovieDetailView: View {
             }
         } catch {
             print("[Ratings] remove failed:", error.localizedDescription)
-            // Fallback: adjust local aggregates if we know old value
+            
             if let old = self.userPreviousRating {
                 await MainActor.run {
                     var currentTotal = averageRating * Double(voteCount)
@@ -852,28 +852,28 @@ struct MovieDetailView: View {
         await MainActor.run {
             let type = (movie.mediaType ?? "movie").lowercased()
 
-            // Mevcut toplu veriyi oku
+            
             var currentTotal = averageRating * Double(voteCount)
             var currentCount = voteCount
 
             if let old = userPreviousRating {
-                // Güncelleme: toplamı yeni - eski farkı kadar ayarla, oy sayısı değişmez
+                
                 currentTotal += (value - old)
-                // Local UI güncelle
+                
                 averageRating = currentCount > 0 ? currentTotal / Double(currentCount) : 0
-                // Kalıcı aggregate güncellemesi
+                
                 let _ = RatingsStore.applyDelta(for: movie.id, type: type, add: (value - old), incrementCount: false)
             } else {
-                // İlk oy: toplamı artır, oy sayısını yükselt
+                
                 currentTotal += value
                 currentCount += 1
                 averageRating = currentTotal / Double(currentCount)
                 voteCount = currentCount
-                // Kalıcı aggregate güncellemesi
+                
                 let _ = RatingsStore.applyDelta(for: movie.id, type: type, add: value, incrementCount: true)
             }
 
-            // Kullanıcıya özel puanı güncelle ve sakla
+            
             if let userID = authVM.user?.id {
                 RatingsStore.setRating(value, for: userID, movieID: movie.id, type: type)
             }
@@ -889,7 +889,7 @@ struct MovieDetailView: View {
         do {
             if type == "movie" {
                 let credits = try await service.fetchMovieCredits(id: movie.id)
-                // Directors (there can be multiple)
+                
                 let directors = credits.crew.filter { ($0.job ?? "").lowercased() == "director" }.map { $0.name }
                 let directorJoined = directors.joined(separator: ", ")
                 let topCast = credits.cast.map { $0.name }
@@ -914,7 +914,7 @@ struct MovieDetailView: View {
             }
         } catch {
             await MainActor.run {
-                // leave existing values or clear gracefully
+                
                 if self.directorName == nil { self.directorName = nil }
                 if self.castNames.isEmpty { self.castNames = [] }
                 if self.createdByNames.isEmpty { self.createdByNames = [] }

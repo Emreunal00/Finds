@@ -1,4 +1,4 @@
-// SearchViewModel.swift
+
 import Foundation
 import Combine
 
@@ -19,18 +19,18 @@ final class SearchViewModel: ObservableObject {
     init(service: MovieServicing = MovieService()) {
         self.service = service
 
-        // When keyword becomes empty, return to default search state automatically
+        
         $keyword
             .removeDuplicates()
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .sink { [weak self] text in
                 guard let self = self else { return }
                 if text.isEmpty {
-                    // Do not clear genres; only reset result-related state
+                    
                     self.results = []
                     self.error = nil
                     self.isLoading = false
-                    // Keep selected filters? Usually default page has no filters.
+                    
                     self.selectedGenreID = nil
                     self.selectedYear = nil
                     print("[SearchVM] keyword cleared -> reset to default page")
@@ -47,7 +47,7 @@ final class SearchViewModel: ObservableObject {
         results = []
         isLoading = false
         error = nil
-        // genres listesi yüklendiyse kalsın
+        
     }
 
     func loadGenres() async {
@@ -57,7 +57,7 @@ final class SearchViewModel: ObservableObject {
             print("[SearchVM] loadGenres success: \(genres.count) genres")
         } catch {
             print("[SearchVM] loadGenres failed:", error)
-            // even if genres fail to load, search should still work
+            
         }
     }
 
@@ -86,14 +86,14 @@ final class SearchViewModel: ObservableObject {
             movies.append(contentsOf: books)
             print("[SearchVM] combined search returned \(movies.count) items")
 
-            // Optional: client-side filters by year and genre
+            
             if let year = selectedYear {
                 let before = movies.count
                 movies = movies.filter { $0.year == year }
                 print("[SearchVM] year filter \(year): \(before) -> \(movies.count)")
             }
             if let gid = selectedGenreID {
-                // Assumes Movie.genres contains "#<id>" tokens
+                
                 let token = "#\(gid)"
                 let before = movies.count
                 movies = movies.filter { movie in
@@ -105,11 +105,11 @@ final class SearchViewModel: ObservableObject {
                 print("[SearchVM] genre filter \(gid): \(before) -> \(movies.count)")
             }
 
-            // Relevance scoring:
-            // - Prefix match is stronger
-            // - Substring match is weaker
-            // - +1 if year matches
-            // - Ties: rating desc, then alphabetical
+            
+            
+            
+            
+            
             let tokens = q
                 .lowercased()
                 .split { $0.isWhitespace }
@@ -152,7 +152,7 @@ final class SearchViewModel: ObservableObject {
         isLoading = false
     }
 
-    // Janra bazlı gerçek içerik (discover movie+tv) — her tıklamada farklı sayfa
+    
     func searchByGenre(genreID: Int) async {
         guard !isLoading else {
             print("[SearchVM] searchByGenre skipped: already loading")
@@ -162,7 +162,7 @@ final class SearchViewModel: ObservableObject {
         error = nil
         selectedGenreID = genreID
 
-        // Basit çeşitlilik: 1...5 arası rastgele sayfa. İsterseniz 1...10 yapabilirsiniz.
+        
         let randomPage = Int.random(in: 1...5)
         print("[SearchVM] discover start genreID=\(genreID) page=\(randomPage)")
 

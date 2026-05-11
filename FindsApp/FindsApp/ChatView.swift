@@ -46,7 +46,7 @@ struct BotRecommendation: Codable, Identifiable, Equatable {
     let id: Int
     let title: String
     let posterURL: URL?
-    let type: String // "movie" or "tv"
+    let type: String 
 
     enum CodingKeys: String, CodingKey {
         case content_id
@@ -70,7 +70,7 @@ struct BotRecommendation: Codable, Identifiable, Equatable {
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        // Encode id back as string for content_id to match decoding
+        
         try container.encode(String(id), forKey: .content_id)
         try container.encode(title, forKey: .title)
         if let url = posterURL {
@@ -92,9 +92,9 @@ struct ChatView: View {
     @State private var messages: [ChatMessage] = []
     @State private var draft: String = ""
     @State private var isSending: Bool = false
-    @State private var selectedMood: String? = nil // optional mood quick filter
+    @State private var selectedMood: String? = nil 
     @State private var liveRecs: [BotRecommendation] = []
-    // Removed @SceneStorage properties as per instructions
+    
 
     private let baseURL = URL(string: "https://finds-api-91195881425.europe-west3.run.app")!
 
@@ -105,14 +105,14 @@ struct ChatView: View {
     }
 
     private func saveMessage(_ message: ChatMessage, for userID: String) {
-        // Do not persist typing placeholders
+        
         if message.text == "…" { return }
         let doc = messagesCollection(for: userID).document(message.id.uuidString)
         let data: [String: Any] = [
             "id": message.id.uuidString,
             "text": message.text,
             "isMe": message.isMe,
-            // Store as Firestore timestamp
+            
             "date": Timestamp(date: message.date)
         ]
         doc.setData(data, merge: true) { error in
@@ -140,7 +140,7 @@ struct ChatView: View {
                     let id = idStr.flatMap(UUID.init(uuidString:)) ?? UUID()
                     return ChatMessage(id: id, text: text, isMe: isMe, date: ts.dateValue())
                 }
-                // Replace local state with remote snapshot to keep in sync
+                
                 self.messages = decoded
             }
     }
@@ -172,18 +172,18 @@ struct ChatView: View {
                         .padding(.vertical, 8)
                     }
                     .onChange(of: messages) { _, _ in
-                        // Auto scroll to bottom when new message arrives
+                        
                         if let last = messages.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
                     }
                 }
                 
-                // Live recommendations (poster + title)
+                
                 if !liveRecs.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
                             ForEach(liveRecs) { rec in
                                 NavigationLink {
-                                    // Construct a lightweight Movie for detail view
+                                    
                                     let mediaType = rec.type.lowercased() == "tv" ? "tv" : "movie"
                                     let movie = Movie(
                                         id: rec.id,
@@ -246,7 +246,7 @@ struct ChatView: View {
                     }
                 }
 
-                // Quick mood buttons
+                
                 ScrollView(.horizontal, showsIndicators: false) {
                     let moods: [(value: String, title: String, icon: String)] = [
                         ("happy", "Happy", "face.smiling"),
@@ -285,14 +285,14 @@ struct ChatView: View {
                     .padding(.bottom, 6)
             }
             .task {
-                // Clear messages and liveRecs on first appear
+                
                 self.messages = []
                 self.liveRecs = []
             }
             .navigationTitle("Chat")
             .navigationBarTitleDisplayMode(.inline)
             .onChange(of: authVM.user?.id) { _, _ in
-                // Clear chat when user changes to keep chats per-user and fresh
+                
                 self.messages = []
                 self.liveRecs = []
                 self.selectedMood = nil
@@ -362,7 +362,7 @@ struct ChatView: View {
             throw NSError(domain: "Chatbot", code: (response as? HTTPURLResponse)?.statusCode ?? -1, userInfo: [NSLocalizedDescriptionKey: body])
         }
 
-        // Debug: log raw body for troubleshooting
+        
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8>"
         print("Chatbot raw response:", raw)
 
@@ -372,7 +372,7 @@ struct ChatView: View {
             let recs = env.recommendations ?? []
             return (message, recs)
         } catch {
-            // Fallback: treat entire body as plain text message
+            
             if let message = String(data: data, encoding: .utf8) {
                 return (message, [])
             } else {
@@ -392,7 +392,7 @@ struct ChatView: View {
         draft = ""
         isSending = true
 
-        // Optional: show typing indicator
+        
         let typingID = UUID()
         let typing = ChatMessage(id: typingID, text: "…", isMe: false, date: .now)
         messages.append(typing)
@@ -401,7 +401,7 @@ struct ChatView: View {
             defer { isSending = false }
             do {
                 let result = try await fetchBotResponse(query: userMsg.text, mood: nil)
-                // replace typing with actual reply
+                
                 if let idx = messages.firstIndex(where: { $0.id == typingID }) { messages.remove(at: idx) }
                 let botMsg = ChatMessage(text: result.message.isEmpty ? "(no reply)" : result.message, isMe: false, date: .now)
                 messages.append(botMsg)

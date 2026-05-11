@@ -10,7 +10,7 @@ struct ProfileCustomUserList: Identifiable, Equatable {
 
 private final class ProfileRatingsCache: ObservableObject {
     static let shared = ProfileRatingsCache()
-    @Published private(set) var averages: [String: Double] = [:] // key: "type:id"
+    @Published private(set) var averages: [String: Double] = [:] 
     private var ongoing: Set<String> = []
 
     func key(for movie: Movie) -> String { "\((movie.mediaType ?? "movie").lowercased()):\(movie.id)" }
@@ -146,7 +146,7 @@ struct ProfileView: View {
             .onAppear {
                 Task { await loadCurrentList(limitToFive: true) }
                 if let uid = authVM.user?.id, let profileId = authVM.currentProfile?.id {
-                    // Start listening on the custom lists for current user and profile
+                    
                     startCustomListsListener(userId: uid, profileId: profileId)
                 }
             }
@@ -160,11 +160,11 @@ struct ProfileView: View {
                 newListName = ""
                 stopCustomListsListener()
             }
-            // Reload data when currentProfile changes
+            
             .onChange(of: authVM.currentProfile) { newProfile in
                 Task {
                     await loadCurrentList(limitToFive: true)
-                    // Restart custom lists listener for new profile
+                    
                     stopCustomListsListener()
                     if let uid = authVM.user?.id, let profileId = newProfile?.id {
                         startCustomListsListener(userId: uid, profileId: profileId)
@@ -314,7 +314,7 @@ struct ProfileView: View {
                         Text(email).font(.subheadline).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    // OK butonu: EditProfileView'i açar
+                    
                     Button {
                         showingEditProfile = true
                     } label: {
@@ -392,7 +392,7 @@ struct ProfileView: View {
                 }
                 .padding(.horizontal)
             } else {
-                // Show empty placeholders if no currentProfile
+                
                 Group {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("My Lists")
@@ -516,7 +516,7 @@ struct ProfileView: View {
                 .padding(.horizontal).padding(.top, 8)
             }
         } else {
-            // Custom Lists Tab
+            
             VStack(alignment: .leading, spacing: 12) {
                 Button {
                     newListName = ""
@@ -798,20 +798,20 @@ struct ProfileView: View {
         }
     }
 
-    // MARK: - Typed entries helpers
+    
 
     private func currentFavoriteEntries() -> [WatchedEntry] {
-        // Use currentProfile favoritesEntries only (migration complete)
+        
         return authVM.currentProfile?.favoritesEntries ?? []
     }
 
     private func currentWatchlistEntries() -> [WatchedEntry] {
-        // Use currentProfile watchlistEntries only (migration complete)
+        
         return authVM.currentProfile?.watchlistEntries ?? []
     }
 
     private func currentWatchedEntries() -> [WatchedEntry] {
-        // Use currentProfile watchedEntries only (migration complete)
+        
         return authVM.currentProfile?.watchedEntries ?? []
     }
 
@@ -843,7 +843,7 @@ struct ProfileView: View {
         }
     }
 
-    // MARK: - Firestore Custom Lists
+    
 
     private func startCustomListsListener(userId: String, profileId: String) {
         Task {
@@ -923,11 +923,11 @@ struct ProfileView: View {
         newProfileName = ""
     }
 
-    // MARK: - Create Custom List
+    
     private func createNewCustomList(name: String) async {
         guard let uid = authVM.user?.id, let profileId = authVM.currentProfile?.id else { return }
         let db = Firestore.firestore()
-        // Firestore path updated to nested profiles under user
+        
         let listsRef = db.collection("users").document(uid).collection("profiles").document(profileId).collection("lists")
         let newDoc = listsRef.document()
         let payload: [String: Any] = [
@@ -944,7 +944,7 @@ struct ProfileView: View {
     private func deleteCustomList(listID: String) async {
         guard let uid = authVM.user?.id, let profileId = authVM.currentProfile?.id else { return }
         let db = Firestore.firestore()
-        // Firestore path updated to nested profiles under user
+        
         let docRef = db.collection("users").document(uid).collection("profiles").document(profileId).collection("lists").document(listID)
         do {
             try await docRef.delete()
@@ -953,7 +953,7 @@ struct ProfileView: View {
         }
     }
 
-    // MARK: - Data loading
+    
 
     private func loadCurrentList(limitToFive: Bool) async {
         errorMessage = nil
@@ -1003,7 +1003,7 @@ struct ProfileView: View {
     }
 
     private var showAllButton: Bool {
-        // Use currentProfile counts only (no fallback)
+        
         guard let profile = authVM.currentProfile else { return false }
         switch selectedTab {
         case .favorites:
@@ -1040,20 +1040,20 @@ struct ProfileView: View {
     }
 
     private var displayName: String {
-        // Use currentProfile displayName only (no fallback)
+        
         if let name = authVM.currentProfile?.displayName, !name.isEmpty { return name }
         return "User"
     }
 
     private var email: String {
-        // Email is only on user, profile does not have email
-        // Show user's email if exists, else fallback to "-"
+        
+        
         return authVM.user?.email ?? "-"
     }
 
     @ViewBuilder
     private var profileAvatar: some View {
-        // Use currentProfile photoURL only (no fallback)
+        
         if let urlStr = authVM.currentProfile?.photoURL {
             if urlStr.hasPrefix("avatar://") {
                 let id = String(urlStr.dropFirst("avatar://".count))
@@ -1084,7 +1084,7 @@ struct ProfileView: View {
                 profilePlaceholder
             }
         } else {
-            // No avatar to show
+            
             profilePlaceholder
         }
     }

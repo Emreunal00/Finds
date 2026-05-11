@@ -1,9 +1,9 @@
-//
-//  MockMovieService.swift
-//  FindsApp
-//
-//  Created by Emre ünal on 11.12.2025.
-//
+
+
+
+
+
+
 
 
 import Foundation
@@ -15,7 +15,7 @@ struct MockMovieService: MovieServicing {
     var discoverResults: [Movie] = []
     var errorToThrow: Error?
     
-    // Default values for trending/suggestions etc.
+    
     var trendingResults: [Movie] { searchResults }
     var suggestionResults: [Movie] { searchResults }
     var trendingTVResults: [Movie] { searchResults }

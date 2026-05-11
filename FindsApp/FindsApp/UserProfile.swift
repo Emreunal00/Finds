@@ -3,7 +3,7 @@ import FirebaseFirestore
 
 struct WatchedEntry: Codable, Equatable {
     let id: Int
-    let type: String // "movie" or "tv"
+    let type: String 
     let externalID: String?
 
     init(id: Int, type: String, externalID: String? = nil) {
@@ -14,7 +14,7 @@ struct WatchedEntry: Codable, Equatable {
 }
 
 struct Profile: Codable, Identifiable, Equatable {
-    var id: String // e.g. UUID string
+    var id: String 
     var displayName: String?
     var photoURL: String?
     var createdAt: Date
@@ -23,7 +23,7 @@ struct Profile: Codable, Identifiable, Equatable {
     var watchlistEntries: [WatchedEntry]
     var booksReadEntries: [WatchedEntry]
     var booksWantToReadEntries: [WatchedEntry]
-    // You may add more profile-specific fields as needed
+    
     
     init(id: String = UUID().uuidString,
          displayName: String? = nil,
@@ -50,14 +50,14 @@ struct UserProfile: Codable, Identifiable, Equatable {
     var id: String?
     var email: String
     
-    // Legacy simple ID lists (deprecated, for backward compatibility)
+    
     var watchlistIDs: [Int]
-    var watchedIDs: [Int]            // legacy support
+    var watchedIDs: [Int]            
     var favoritesIDs: [Int]
     
-    // New profiles array
+    
     var profiles: [Profile]
-    var selectedProfileID: String? // currently active profile ID, optional
+    var selectedProfileID: String? 
 
     init(id: String? = nil,
          email: String,
@@ -99,7 +99,7 @@ final class UserProfileRepository {
 
         let createdAtTimestamp = Timestamp(date: Date())
 
-        // Convert profiles array to array of dictionaries for Firestore
+        
         let profilesData: [[String: Any]] = profile.profiles.map { prof in
             [
                 "id": prof.id,
@@ -116,15 +116,15 @@ final class UserProfileRepository {
 
         let data: [String: Any] = [
             "email": profile.email,
-            // Legacy fields retained for backward-compatibility (deprecated)
+            
             "watchlistIDs": profile.watchlistIDs,
             "watchedIDs": profile.watchedIDs,
             "favoritesIDs": profile.favoritesIDs,
-            // New profiles array with all profile-specific fields nested inside
+            
             "profiles": profilesData,
             "selectedProfileID": profile.selectedProfileID as Any,
             "createdAt": createdAtTimestamp
-        ].merging(optional: [:]) // no optional fields at root
+        ].merging(optional: [:]) 
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             users.document(uid).setData(data, merge: true) { error in
@@ -160,12 +160,12 @@ final class UserProfileRepository {
 
         let email = dict["email"] as? String ?? ""
 
-        // Legacy simple ID lists (deprecated, for backward compatibility)
+        
         let watchlistIDs = ints(from: dict["watchlistIDs"])
         let watchedIDs = ints(from: dict["watchedIDs"])
         let favoritesIDs = ints(from: dict["favoritesIDs"])
 
-        // Parse profiles array if present
+        
         var profiles: [Profile] = []
         if let profilesArr = dict["profiles"] as? [[String: Any]], !profilesArr.isEmpty {
             profiles = profilesArr.compactMap { pDict in
@@ -222,9 +222,9 @@ final class UserProfileRepository {
                 )
             }
         } else {
-            // No profiles array found, build a single profile from legacy single profile fields (deprecated)
-            // Use the root-level fields like displayName, photoURL, watchedEntries, etc. for backward compatibility if they existed,
-            // but these are removed from UserProfile and moved to Profile, so we create a Profile here with legacy ID "default"
+            
+            
+            
             let displayName = dict["displayName"] as? String
             let photoURL = dict["photoURL"] as? String
 
@@ -306,7 +306,7 @@ final class UserProfileRepository {
         )
     }
 
-    // MARK: - Array field helpers
+    
 
     private func updateArrayField(uid: String, field: String, add values: [Any]? = nil, remove valuesToRemove: [Any]? = nil) async throws {
         var update: [String: Any] = [:]
@@ -323,7 +323,7 @@ final class UserProfileRepository {
         }
     }
 
-    // Favorites (legacy)
+    
     func addToFavorites(uid: String, id: Int) async throws {
         try await updateArrayField(uid: uid, field: "favoritesIDs", add: [id])
     }
@@ -331,7 +331,7 @@ final class UserProfileRepository {
         try await updateArrayField(uid: uid, field: "favoritesIDs", remove: [id])
     }
 
-    // Watchlist (legacy)
+    
     func addToWatchlist(uid: String, id: Int) async throws {
         try await updateArrayField(uid: uid, field: "watchlistIDs", add: [id])
     }
@@ -339,7 +339,7 @@ final class UserProfileRepository {
         try await updateArrayField(uid: uid, field: "watchlistIDs", remove: [id])
     }
 
-    // Watched (typed)
+    
     func addToWatched(uid: String, entry: WatchedEntry) async throws {
         try await updateArrayField(uid: uid, field: "watchedEntries", add: [["id": entry.id, "type": entry.type]])
     }
@@ -347,7 +347,7 @@ final class UserProfileRepository {
         try await updateArrayField(uid: uid, field: "watchedEntries", remove: [["id": entry.id, "type": entry.type]])
     }
 
-    // Favorites (typed)
+    
     func addToFavorites(uid: String, entry: WatchedEntry) async throws {
         try await updateArrayField(uid: uid, field: "favoritesEntries", add: [["id": entry.id, "type": entry.type]])
     }
@@ -355,7 +355,7 @@ final class UserProfileRepository {
         try await updateArrayField(uid: uid, field: "favoritesEntries", remove: [["id": entry.id, "type": entry.type]])
     }
 
-    // Watchlist (typed)
+    
     func addToWatchlist(uid: String, entry: WatchedEntry) async throws {
         try await updateArrayField(uid: uid, field: "watchlistEntries", add: [["id": entry.id, "type": entry.type]])
     }
@@ -363,7 +363,7 @@ final class UserProfileRepository {
         try await updateArrayField(uid: uid, field: "watchlistEntries", remove: [["id": entry.id, "type": entry.type]])
     }
 
-    // Backward-compat (not used after migration, but keep)
+    
     func addToWatched(uid: String, id: Int) async throws {
         try await updateArrayField(uid: uid, field: "watchedIDs", add: [id])
     }
@@ -371,7 +371,7 @@ final class UserProfileRepository {
         try await updateArrayField(uid: uid, field: "watchedIDs", remove: [id])
     }
 
-    // Utility functions for parsing ints from mixed types
+    
     private func ints(from any: Any?) -> [Int] {
         if let arr = any as? [Int] { return arr }
         if let arr = any as? [String] {

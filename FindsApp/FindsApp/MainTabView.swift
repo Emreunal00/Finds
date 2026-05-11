@@ -19,10 +19,10 @@ struct MainTabView: View {
     @EnvironmentObject var authVM: AuthViewModel
 
     @State private var selectedTab: MainTab = .home
-    // Aynı sekmeye tekrar dokunmayı algılamak için önceki seçim
+    
     @State private var lastSelectedTab: MainTab = .home
 
-    // SearchView’e reset tetikleyicisi göndermek için bir sayaç
+    
     @State private var searchResetToken: Int = 0
 
     var body: some View {
@@ -79,7 +79,7 @@ struct MainTabView: View {
         }
         .tint(.green)
         .onChange(of: selectedTab) { newValue in
-            // Aynı tab tekrar seçildiyse ve bu Search tab ise reset tetikle
+            
             if lastSelectedTab == newValue, newValue == .search {
                 searchResetToken &+= 1
             }
@@ -92,4 +92,3 @@ struct MainTabView: View {
     MainTabView()
         .environmentObject(AuthViewModel())
 }
-

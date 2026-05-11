@@ -4,7 +4,7 @@ import FirebaseFirestore
 
 private final class PosterRatingsCache: ObservableObject {
     static let shared = PosterRatingsCache()
-    @Published private(set) var averages: [String: Double] = [:] // key: "type:id"
+    @Published private(set) var averages: [String: Double] = [:] 
 
     private var ongoingTasks: Set<String> = []
 
@@ -70,7 +70,7 @@ struct ContentView: View {
                 Group {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 24) {
-                            // İçerik başlığı (large gibi görünür, ama navbara bağlı değil)
+                            
                             HStack {
                                 Text(welcomeTitle)
                                     .font(.largeTitle).bold()
@@ -168,13 +168,13 @@ struct ContentView: View {
 
                 HomeMiniGameLauncher(isPresented: $showMiniGame)
             }
-            // Navigation bar’ı bu ekranda gizle: mini başlık görünmez
+            
             .navigationBarHidden(true)
             .task {
                 if homeVM.trending.isEmpty && homeVM.suggestions.isEmpty && homeVM.trendingShows.isEmpty && homeVM.suggestedShows.isEmpty && homeVM.trendingBooks.isEmpty && homeVM.suggestedBooks.isEmpty {
                     await homeVM.load(userID: authVM.user?.id)
                 }
-                // Check onboarding status once per appearance
+                
                 guard !onboardingChecked else { return }
                 onboardingChecked = true
                 if let uid = authVM.user?.id {
@@ -185,7 +185,7 @@ struct ContentView: View {
                             await MainActor.run { showOnboarding = true }
                         }
                     } catch {
-                        // If fetch fails, default to not showing onboarding to avoid blocking
+                        
                         print("[Onboarding] status fetch failed:", error.localizedDescription)
                     }
                 }
@@ -197,7 +197,7 @@ struct ContentView: View {
                 Hello()
                     .environmentObject(authVM)
                     .onDisappear {
-                        // When Hello completes, ensure we don't show it again in this session
+                        
                         showOnboarding = false
                     }
             }
@@ -205,7 +205,7 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Section Header
+
 
 private struct SectionHeader: View {
     let title: String

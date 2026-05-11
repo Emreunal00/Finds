@@ -4,7 +4,7 @@ import SwiftUI
 
 private final class FavoritesRatingsCache: ObservableObject {
     static let shared = FavoritesRatingsCache()
-    @Published private(set) var averages: [String: Double] = [:] // key: "type:id"
+    @Published private(set) var averages: [String: Double] = [:] 
     private var ongoing: Set<String> = []
 
     func key(for movie: Movie) -> String { "\((movie.mediaType ?? "movie").lowercased()):\(movie.id)" }
@@ -53,23 +53,23 @@ struct FavoritesListView: View {
     @State private var pendingDeletionMovie: Movie? = nil
     @State private var showingDeletionConfirm = false
 
-    // Eklenme sırası referansı (typed entries)
+    
     @State private var originalEntries: [WatchedEntry] = []
-    // TMDb’de bulunmayanlar (404) için bilgi
+    
     @State private var invalid: [WatchedEntry] = []
     
     @StateObject private var ratingsCache = FavoritesRatingsCache.shared
 
     private let service: MovieServicing = MovieService()
 
-    // Updated to use currentProfile instead of user for entries
+    
     private var entriesRaw: [WatchedEntry] {
-        // Using currentProfile now for all favorites related data
+        
         guard let profile = authVM.currentProfile else { return [] }
         if !profile.favoritesEntries.isEmpty {
             return profile.favoritesEntries
         } else {
-            // Legacy fallback: deprecated, kept for migration only
+            
             return authVM.user?.favoritesIDs.map { WatchedEntry(id: $0, type: "movie") } ?? []
         }
     }
@@ -145,11 +145,11 @@ struct FavoritesListView: View {
         }
         .task { await loadAll() }
         .onChange(of: authVM.listsVersion) { _ in Task { await loadAll() } }
-        // Added onChange for currentProfile to reload when profile changes
+        
         .onChange(of: authVM.currentProfile) { _ in Task { await loadAll() } }
         .overlay {
             if showingDeletionConfirm, let movie = pendingDeletionMovie {
-                // Use currentProfile's displayName if available, else fallback to movie.title
+                
                 let displayName = authVM.currentProfile?.displayName ?? movie.title
                 ZStack {
                     Color.black.opacity(0.4)
@@ -157,7 +157,7 @@ struct FavoritesListView: View {
                     VStack(spacing: 16) {
                         Text("Remove from Favorites?")
                             .font(.headline)
-                        // Updated text to use displayName
+                        
                         Text("This will remove \(displayName) from your Favorites.")
                             .multilineTextAlignment(.center)
                             .font(.subheadline)
@@ -190,7 +190,7 @@ struct FavoritesListView: View {
         }
     }
 
-    // MARK: - Data loading
+    
 
     private func loadAll() async {
         let esRaw = entriesRaw
@@ -209,7 +209,7 @@ struct FavoritesListView: View {
         invalid = []
         defer { isLoading = false }
 
-        // Non-throwing group: tekil hataları atla, 404’leri tespit et
+        
         let fetched: [Movie] = await withTaskGroup(of: (WatchedEntry, Movie?).self) { group -> [Movie] in
             for entry in newestFirst {
                 group.addTask {
@@ -243,20 +243,20 @@ struct FavoritesListView: View {
         movies = fetched
     }
 
-    // MARK: - Deletion
+    
 
     private func removeFromFavorites(_ movie: Movie) {
-        // Optimistically update local UI
+        
         movies.removeAll { $0.id == movie.id }
         originalEntries.removeAll { $0.id == movie.id }
 
-        // Persist the change (AuthViewModel handles typed vs legacy internally)
+        
         Task { @MainActor in
             await authVM.toggleFavorite(movieID: movie.id, mediaType: (movie.mediaType ?? "movie"), externalContentID: movie.externalContentID)
         }
     }
 
-    // MARK: - Sorting
+    
 
     private func sortedMovies() -> [Movie] {
         switch sort {
@@ -283,7 +283,7 @@ struct FavoritesListView: View {
         }
     }
 
-    // MARK: - Poster helpers
+    
 
     @ViewBuilder
     private func poster(for movie: Movie) -> some View {

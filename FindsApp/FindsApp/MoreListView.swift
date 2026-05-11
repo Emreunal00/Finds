@@ -3,7 +3,7 @@ import Combine
 
 private final class MoreRatingsCache: ObservableObject {
     static let shared = MoreRatingsCache()
-    @Published private(set) var averages: [String: Double] = [:] // key: "type:id"
+    @Published private(set) var averages: [String: Double] = [:] 
     private var ongoing: Set<String> = []
 
     func key(for movie: Movie) -> String { "\((movie.mediaType ?? "movie").lowercased()):\(movie.id)" }
@@ -139,7 +139,7 @@ struct MoreListView: View {
         do {
             var result: [Movie] = []
             var page = 1
-            while result.count < 250 && page <= 20 { // güvenli üst sınır
+            while result.count < 250 && page <= 20 { 
                 let batch: [Movie]
                 switch kind {
                 case .trendingMovies:
@@ -148,7 +148,7 @@ struct MoreListView: View {
                     if page == 1, let uid = authVM.user?.id, !uid.isEmpty {
                         batch = try await recommendations.fetchRecommendedMovies(userID: uid)
                     } else {
-                        batch = [] // no fallback, keep only personalized first page
+                        batch = [] 
                     }
                 case .trendingTV:
                     batch = try await service.getTrendingTV(page: page)
@@ -156,7 +156,7 @@ struct MoreListView: View {
                     if page == 1, let uid = authVM.user?.id, !uid.isEmpty {
                         batch = try await recommendations.fetchRecommendedShows(userID: uid)
                     } else {
-                        batch = [] // no fallback, keep only personalized first page
+                        batch = [] 
                     }
                 case .trendingBooks:
                     batch = await BookCatalog.trendingBooks(page: page)

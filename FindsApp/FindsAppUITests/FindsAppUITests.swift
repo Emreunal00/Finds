@@ -1,9 +1,9 @@
-//
-//  FindsAppUITests.swift
-//  FindsAppUITests
-//
-//  Created by Emre ünal on 11.12.2025.
-//
+
+
+
+
+
+
 
 import XCTest
 
@@ -18,7 +18,7 @@ final class FindsAppUITests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
-        // Ensure app is terminated between tests to avoid interference
+        
         if app != nil {
             if app.state == .runningForeground || app.state == .runningBackground {
                 app.terminate()
@@ -31,11 +31,11 @@ final class FindsAppUITests: XCTestCase {
     func testSearchClearGoesToDefault() throws {
         app.launch()
 
-        // Wait for Tab Bar to appear
+        
         let tabBar = app.tabBars.firstMatch
-        XCTAssertTrue(tabBar.waitForExistence(timeout: 8), "Tab bar görünmedi. Login/onboarding olabilir veya etiketler farklı.")
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 8), "Tab bar did not appear. Login/onboarding may be active, or labels may differ.")
 
-        // Try multiple possible labels in case of localization
+        
         let possibleLabels = ["Search", "Ara", "SEARCH"]
         var tapped = false
         for label in possibleLabels {
@@ -46,23 +46,23 @@ final class FindsAppUITests: XCTestCase {
                 break
             }
         }
-        XCTAssertTrue(tapped, "Search tab butonu bulunamadı. Tab item label'ını kontrol edin.")
+        XCTAssertTrue(tapped, "Search tab button was not found. Check the tab item label.")
 
-        // Try to find search field by identifier first, then fallback to first search/text field
+        
         let searchFieldById = app.textFields["searchTextField"]
         let searchField: XCUIElement = searchFieldById.exists ? searchFieldById : (app.searchFields.firstMatch.exists ? app.searchFields.firstMatch : app.textFields.firstMatch)
-        XCTAssertTrue(searchField.waitForExistence(timeout: 5), "Arama alanı bulunamadı. Lütfen SearchView'e accessibilityIdentifier('searchTextField') ekleyin.")
+        XCTAssertTrue(searchField.waitForExistence(timeout: 5), "Search field was not found. Add accessibilityIdentifier('searchTextField') to SearchView.")
 
         searchField.tap()
         searchField.typeText("Matrix")
 
-        // Clear by sending delete keys
+        
         let deleteString = String(repeating: XCUIKeyboardKey.delete.rawValue, count: 12)
         searchField.typeText(deleteString)
 
-        // Optionally assert default state if identifier exists
-        // let emptyState = app.otherElements["searchEmptyState"]
-        // XCTAssertTrue(emptyState.waitForExistence(timeout: 5))
+        
+        
+        
     }
 
     @MainActor
