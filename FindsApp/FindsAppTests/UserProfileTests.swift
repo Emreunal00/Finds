@@ -13,13 +13,15 @@ struct UserProfileTests {
         #expect(profile.id == "abc")
         #expect(profile.email == "mail@test.com")
         #expect(profile.watchlistIDs.isEmpty)
-        #expect(profile.watchedEntries.isEmpty)
+        #expect(profile.watchedIDs.isEmpty)
+        #expect(profile.profiles.isEmpty)
     }
     @Test("New profile is Equatable")
     func testProfileEquatable() {
         let fixedDate = Date(timeIntervalSince1970: 1234567890)
-        let p1 = UserProfile(id: "uid", email: "a@b.com", displayName: nil, photoURL: nil, createdAt: fixedDate, watchlistIDs: [], watchedIDs: [], favoritesIDs: [], watchedEntries: [], favoritesEntries: [], watchlistEntries: [])
-        let p2 = UserProfile(id: "uid", email: "a@b.com", displayName: nil, photoURL: nil, createdAt: fixedDate, watchlistIDs: [], watchedIDs: [], favoritesIDs: [], watchedEntries: [], favoritesEntries: [], watchlistEntries: [])
+        let profile = Profile(id: "profile", displayName: "Reader", createdAt: fixedDate)
+        let p1 = UserProfile(id: "uid", email: "a@b.com", profiles: [profile], selectedProfileID: profile.id)
+        let p2 = UserProfile(id: "uid", email: "a@b.com", profiles: [profile], selectedProfileID: profile.id)
         #expect(p1 == p2)
     }
 }
