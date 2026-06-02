@@ -1,5 +1,5 @@
 import SwiftUI
-import FirebaseFirestore
+import Combine
 
 struct ChatMessage: Identifiable, Equatable, Codable {
     let id: UUID
@@ -44,41 +44,55 @@ struct ChatBubble: View {
 
 struct BotRecommendation: Codable, Identifiable, Equatable {
     let id: Int
+    let contentID: String
     let title: String
     let posterURL: URL?
-    let type: String 
+    let type: String
 
     enum CodingKeys: String, CodingKey {
-        case content_id
+        case contentID = "content_id"
+        case bookID = "book_id"
         case title
-        case poster_url
+        case posterURL = "poster_url"
+        case imageURL = "image_url"
         case type
     }
 
     init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        let contentID = try c.decode(String.self, forKey: .content_id)
-        self.id = Int(contentID) ?? contentID.hashValue
-        self.title = try c.decode(String.self, forKey: .title)
-        if let urlStr = try? c.decode(String.self, forKey: .poster_url) {
-            self.posterURL = URL(string: urlStr)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let value = try? container.decode(String.self, forKey: .contentID) {
+            contentID = value
+        } else if let value = try? container.decode(Int.self, forKey: .contentID) {
+            contentID = String(value)
         } else {
-            self.posterURL = nil
+            contentID = try container.decode(String.self, forKey: .bookID)
         }
-        self.type = try c.decode(String.self, forKey: .type)
+        id = Int(contentID) ?? Self.stableNumericID(for: contentID)
+        title = try container.decode(String.self, forKey: .title)
+        type = try container.decode(String.self, forKey: .type)
+
+        let urlString = (try? container.decode(String.self, forKey: .posterURL))
+            ?? (try? container.decode(String.self, forKey: .imageURL))
+        posterURL = urlString
+            .map { $0.replacingOccurrences(of: "http://", with: "https://") }
+            .flatMap(URL.init(string:))
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        
-        try container.encode(String(id), forKey: .content_id)
+        try container.encode(contentID, forKey: .contentID)
         try container.encode(title, forKey: .title)
-        if let url = posterURL {
-            try container.encode(url.absoluteString, forKey: .poster_url)
-        } else {
-            try container.encodeNil(forKey: .poster_url)
-        }
+        try container.encodeIfPresent(posterURL?.absoluteString, forKey: .posterURL)
         try container.encode(type, forKey: .type)
+    }
+
+    private static func stableNumericID(for string: String) -> Int {
+        var hash: UInt64 = 1469598103934665603
+        for byte in string.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 1099511628211
+        }
+        return Int(hash & 0x7fffffff)
     }
 }
 
@@ -87,63 +101,55 @@ private struct BotEnvelope: Decodable {
     let recommendations: [BotRecommendation]?
 }
 
+@MainActor
+final class ChatSessionStore: ObservableObject {
+    @Published var messages: [ChatMessage] = []
+    @Published var liveRecommendations: [BotRecommendation] = []
+
+    private var activeConversationID: String?
+    private var excludedContentIDs: Set<String> = []
+    private var lastRecommendationQuery: String?
+
+    func activate(userID: String?, profileID: String?) {
+        let conversationID = [userID, profileID].compactMap { $0 }.joined(separator: ":")
+        guard conversationID != activeConversationID else { return }
+        activeConversationID = conversationID.isEmpty ? nil : conversationID
+        messages = []
+        liveRecommendations = []
+        excludedContentIDs = []
+        lastRecommendationQuery = nil
+    }
+
+    func effectiveQuery(for query: String) -> String {
+        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let followUpQueries = ["farklı", "daha", "başka", "daha farklı", "başka öner", "daha öner"]
+        if followUpQueries.contains(where: { normalized == $0 || normalized.hasPrefix("\($0) ") }),
+           let lastRecommendationQuery {
+            return lastRecommendationQuery
+        }
+        lastRecommendationQuery = query
+        return query
+    }
+
+    func record(_ recommendations: [BotRecommendation]) {
+        liveRecommendations = recommendations
+        excludedContentIDs.formUnion(recommendations.map(\.contentID))
+    }
+
+    var excludedIDs: [String] {
+        excludedContentIDs.sorted()
+    }
+}
+
 struct ChatView: View {
     @EnvironmentObject var authVM: AuthViewModel
-    @State private var messages: [ChatMessage] = []
+    @EnvironmentObject var chatSession: ChatSessionStore
     @State private var draft: String = ""
     @State private var isSending: Bool = false
-    @State private var selectedMood: String? = nil 
-    @State private var liveRecs: [BotRecommendation] = []
-    
+    @State private var selectedMood: String? = nil
 
-    private let baseURL = URL(string: "https://finds-api-91195881425.europe-west3.run.app")!
-
-    private let db = Firestore.firestore()
-
-    private func messagesCollection(for userID: String) -> CollectionReference {
-        db.collection("users").document(userID).collection("chat_history")
-    }
-
-    private func saveMessage(_ message: ChatMessage, for userID: String) {
-        
-        if message.text == "…" { return }
-        let doc = messagesCollection(for: userID).document(message.id.uuidString)
-        let data: [String: Any] = [
-            "id": message.id.uuidString,
-            "text": message.text,
-            "isMe": message.isMe,
-            
-            "date": Timestamp(date: message.date)
-        ]
-        doc.setData(data, merge: true) { error in
-            if let error = error {
-                print("Failed to save message: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func startListeningHistory(for userID: String) {
-        messagesCollection(for: userID)
-            .order(by: "date", descending: false)
-            .addSnapshotListener { snapshot, error in
-                if let error = error {
-                    print("History listen error: \(error.localizedDescription)")
-                    return
-                }
-                guard let docs = snapshot?.documents else { return }
-                let decoded: [ChatMessage] = docs.compactMap { doc in
-                    let data = doc.data()
-                    guard let text = data["text"] as? String,
-                          let isMe = data["isMe"] as? Bool,
-                          let ts = data["date"] as? Timestamp else { return nil }
-                    let idStr = data["id"] as? String
-                    let id = idStr.flatMap(UUID.init(uuidString:)) ?? UUID()
-                    return ChatMessage(id: id, text: text, isMe: isMe, date: ts.dateValue())
-                }
-                
-                self.messages = decoded
-            }
-    }
+    private var messages: [ChatMessage] { chatSession.messages }
+    private var liveRecs: [BotRecommendation] { chatSession.liveRecommendations }
 
     var body: some View {
         NavigationStack {
@@ -184,7 +190,7 @@ struct ChatView: View {
                             ForEach(liveRecs) { rec in
                                 NavigationLink {
                                     
-                                    let mediaType = rec.type.lowercased() == "tv" ? "tv" : "movie"
+                                    let mediaType = rec.type.lowercased()
                                     let movie = Movie(
                                         id: rec.id,
                                         title: rec.title,
@@ -196,11 +202,12 @@ struct ChatView: View {
                                         posterURL: rec.posterURL,
                                         durationMinutes: nil,
                                         mediaType: mediaType,
+                                        externalContentID: mediaType == "book" ? rec.contentID : nil,
                                         cast: nil,
                                         directors: nil,
                                         popularity: nil
                                     )
-                                    MovieDetailView(movie: movie)
+                                    MediaDetailDestination(item: movie)
                                 } label: {
                                     VStack(alignment: .leading, spacing: 6) {
                                         ZStack {
@@ -285,16 +292,16 @@ struct ChatView: View {
                     .padding(.bottom, 6)
             }
             .task {
-                
-                self.messages = []
-                self.liveRecs = []
+                chatSession.activate(userID: authVM.user?.id, profileID: authVM.currentProfile?.id)
             }
             .navigationTitle("Chat")
             .navigationBarTitleDisplayMode(.inline)
             .onChange(of: authVM.user?.id) { _, _ in
-                
-                self.messages = []
-                self.liveRecs = []
+                chatSession.activate(userID: authVM.user?.id, profileID: authVM.currentProfile?.id)
+                self.selectedMood = nil
+            }
+            .onChange(of: authVM.currentProfile?.id) { _, _ in
+                chatSession.activate(userID: authVM.user?.id, profileID: authVM.currentProfile?.id)
                 self.selectedMood = nil
             }
         }
@@ -341,17 +348,23 @@ struct ChatView: View {
         }
     }
 
-    private func chatbotURL(userID: String, query: String? = nil, mood: String? = nil) -> URL? {
-        var comps = URLComponents(url: baseURL.appendingPathComponent("api/v1/chatbot"), resolvingAgainstBaseURL: false)
-        var items: [URLQueryItem] = [URLQueryItem(name: "userId", value: userID)]
+    private func chatbotURL(userID: String, profileID: String, query: String? = nil, mood: String? = nil) -> URL? {
+        var items: [URLQueryItem] = [
+            URLQueryItem(name: "userId", value: userID),
+            URLQueryItem(name: "profileId", value: profileID)
+        ]
         if let q = query, !q.isEmpty { items.append(URLQueryItem(name: "query", value: q)) }
         if let m = mood, !m.isEmpty { items.append(URLQueryItem(name: "mood", value: m)) }
-        comps?.queryItems = items
-        return comps?.url
+        if !chatSession.excludedIDs.isEmpty {
+            items.append(URLQueryItem(name: "excludeIds", value: chatSession.excludedIDs.joined(separator: ",")))
+        }
+        return FindsAPI.url(path: "api/v1/chatbot", queryItems: items)
     }
 
     private func fetchBotResponse(query: String? = nil, mood: String? = nil) async throws -> (message: String, recs: [BotRecommendation]) {
-        guard let uid = authVM.user?.id, !uid.isEmpty, let url = chatbotURL(userID: uid, query: query, mood: mood) else {
+        guard let uid = authVM.user?.id, !uid.isEmpty,
+              let profileID = authVM.currentProfile?.id,
+              let url = chatbotURL(userID: uid, profileID: profileID, query: query, mood: mood) else {
             throw URLError(.userAuthenticationRequired)
         }
         var req = URLRequest(url: url)
@@ -384,35 +397,32 @@ struct ChatView: View {
     private func send() {
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        let effectiveQuery = chatSession.effectiveQuery(for: trimmed)
         let userMsg = ChatMessage(text: trimmed, isMe: true, date: .now)
-        messages.append(userMsg)
-        if let uid = authVM.user?.id, !uid.isEmpty {
-            saveMessage(userMsg, for: uid)
-        }
+        chatSession.messages.append(userMsg)
         draft = ""
         isSending = true
 
-        
         let typingID = UUID()
-        let typing = ChatMessage(id: typingID, text: "…", isMe: false, date: .now)
-        messages.append(typing)
+        chatSession.messages.append(ChatMessage(id: typingID, text: "…", isMe: false, date: .now))
 
         Task {
             defer { isSending = false }
             do {
-                let result = try await fetchBotResponse(query: userMsg.text, mood: nil)
-                
-                if let idx = messages.firstIndex(where: { $0.id == typingID }) { messages.remove(at: idx) }
+                let result = try await fetchBotResponse(query: effectiveQuery, mood: nil)
+                if let idx = chatSession.messages.firstIndex(where: { $0.id == typingID }) {
+                    chatSession.messages.remove(at: idx)
+                }
                 let botMsg = ChatMessage(text: result.message.isEmpty ? "(no reply)" : result.message, isMe: false, date: .now)
-                messages.append(botMsg)
-                self.liveRecs = result.recs
-                if let uid = authVM.user?.id, !uid.isEmpty { saveMessage(botMsg, for: uid) }
+                chatSession.messages.append(botMsg)
+                chatSession.record(result.recs)
             } catch {
-                if let idx = messages.firstIndex(where: { $0.id == typingID }) { messages.remove(at: idx) }
+                if let idx = chatSession.messages.firstIndex(where: { $0.id == typingID }) {
+                    chatSession.messages.remove(at: idx)
+                }
                 let errMsg = ChatMessage(text: "Failed: \(error.localizedDescription)", isMe: false, date: .now)
-                messages.append(errMsg)
-                self.liveRecs = []
-                if let uid = authVM.user?.id, !uid.isEmpty { saveMessage(errMsg, for: uid) }
+                chatSession.messages.append(errMsg)
+                chatSession.liveRecommendations = []
             }
         }
     }
@@ -420,21 +430,22 @@ struct ChatView: View {
     private func sendMood(_ mood: String) async {
         isSending = true
         let typingID = UUID()
-        let typing = ChatMessage(id: typingID, text: "…", isMe: false, date: .now)
-        messages.append(typing)
+        chatSession.messages.append(ChatMessage(id: typingID, text: "…", isMe: false, date: .now))
         do {
-            let result = try await fetchBotResponse(query: nil, mood: mood)
-            if let idx = messages.firstIndex(where: { $0.id == typingID }) { messages.remove(at: idx) }
+            let result = try await fetchBotResponse(query: "\(mood) ruh halime uygun film öner", mood: mood)
+            if let idx = chatSession.messages.firstIndex(where: { $0.id == typingID }) {
+                chatSession.messages.remove(at: idx)
+            }
             let botMsg = ChatMessage(text: result.message.isEmpty ? "(no reply)" : result.message, isMe: false, date: .now)
-            messages.append(botMsg)
-            self.liveRecs = result.recs
-            if let uid = authVM.user?.id, !uid.isEmpty { saveMessage(botMsg, for: uid) }
+            chatSession.messages.append(botMsg)
+            chatSession.record(result.recs)
         } catch {
-            if let idx = messages.firstIndex(where: { $0.id == typingID }) { messages.remove(at: idx) }
+            if let idx = chatSession.messages.firstIndex(where: { $0.id == typingID }) {
+                chatSession.messages.remove(at: idx)
+            }
             let errMsg = ChatMessage(text: "Failed: \(error.localizedDescription)", isMe: false, date: .now)
-            messages.append(errMsg)
-            self.liveRecs = []
-            if let uid = authVM.user?.id, !uid.isEmpty { saveMessage(errMsg, for: uid) }
+            chatSession.messages.append(errMsg)
+            chatSession.liveRecommendations = []
         }
         isSending = false
     }
@@ -442,4 +453,6 @@ struct ChatView: View {
 
 #Preview {
     ChatView()
+        .environmentObject(AuthViewModel())
+        .environmentObject(ChatSessionStore())
 }

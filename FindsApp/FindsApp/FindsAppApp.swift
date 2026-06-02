@@ -63,6 +63,7 @@ struct YourApp: App {
 
   @StateObject private var authVM = AuthViewModel()
   @StateObject private var themeStore = ThemeStore()
+  @StateObject private var chatSession = ChatSessionStore()
   @State private var shouldShowLaunchProfilePicker = false
   @State private var lastAuthenticatedUserID: String?
 
@@ -88,6 +89,7 @@ struct YourApp: App {
       .preferredColorScheme(themeStore.preference.colorScheme)
       .environmentObject(authVM)
       .environmentObject(themeStore)
+      .environmentObject(chatSession)
       .onAppear {
         syncLaunchProfileRequirement(for: authVM.user)
       }

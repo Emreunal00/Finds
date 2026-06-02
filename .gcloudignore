@@ -2,7 +2,7 @@
 .gitignore
 README.md
 *.pyc
-pycache/
+__pycache__/
 venv/
 .env
 .gradle/

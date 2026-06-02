@@ -202,6 +202,34 @@ def extract_ids_from_entries(entries):
         elif isinstance(entry, str): ids.append(entry)
     return ids
 
+def extract_book_ids_from_entries(entries):
+    ids = []
+    if not entries: return ids
+    for entry in entries:
+        if isinstance(entry, dict):
+            external_id = entry.get('externalID') or entry.get('externalContentID')
+            if external_id: ids.append(str(external_id))
+            elif entry.get('id'): ids.append(str(entry.get('id')))
+        elif isinstance(entry, str): ids.append(entry)
+    return ids
+
+def get_recommendation_profile(user_data, requested_profile_id=None):
+    """Return profile-scoped interactions while keeping account-level onboarding data."""
+    profiles = user_data.get('profiles', []) if isinstance(user_data, dict) else []
+    profile_id = requested_profile_id or user_data.get('selectedProfileID')
+    selected_profile = next(
+        (profile for profile in profiles if isinstance(profile, dict) and profile.get('id') == profile_id),
+        None
+    )
+    if selected_profile is None and profiles:
+        selected_profile = next((profile for profile in profiles if isinstance(profile, dict)), None)
+    if selected_profile is None:
+        return user_data
+
+    scoped_data = dict(selected_profile)
+    scoped_data['onboardingSelections'] = user_data.get('onboardingSelections', [])
+    return scoped_data
+
 def get_content_from_firestore(ids_list):
     if not ids_list: return {}
     content_data = {}
@@ -508,9 +536,15 @@ def analyze_query_with_gemini(query):
 
 def get_chatbot_recommendations_logic(is_chatbot=False):
     user_id = request.args.get('userId')
+    profile_id = request.args.get('profileId')
     query = (request.args.get('query') or "").strip()
     raw_type = request.args.get('type')
     raw_count = request.args.get('count')
+    excluded_ids = {
+        value.strip()
+        for value in (request.args.get('excludeIds') or '').split(',')
+        if value.strip()
+    }
     user_data = {}
     
     if not user_id: return jsonify({"error": "userId gerekli."}), 400
@@ -525,7 +559,8 @@ def get_chatbot_recommendations_logic(is_chatbot=False):
     try:
         if users_collection is not None:
             user_doc = users_collection.document(user_id).get()
-            user_data = user_doc.to_dict() if user_doc.exists else {}
+            account_data = user_doc.to_dict() if user_doc.exists else {}
+            user_data = get_recommendation_profile(account_data, profile_id)
         
         all_relevant_ids = list(set(extract_ids_from_entries(user_data.get('favoritesEntries', [])) + 
                                     extract_ids_from_entries(user_data.get('watchedEntries', []))))
@@ -577,8 +612,15 @@ def get_chatbot_recommendations_logic(is_chatbot=False):
             b_dists = book_query_results['distances'][0]
             b_metas = book_query_results['metadatas'][0]
             
+            book_interacted_ids = set(
+                extract_book_ids_from_entries(user_data.get('booksReadEntries', [])) +
+                extract_book_ids_from_entries(user_data.get('booksWantToReadEntries', [])) +
+                extract_book_ids_from_entries(user_data.get('favoritesEntries', []))
+            )
             final_books = []
             for i in range(len(b_ids)):
+                if str(b_ids[i]) in excluded_ids or str(b_ids[i]) in book_interacted_ids:
+                    continue
                 cosine_sim = 1 - (b_dists[i] / 2.0)
                 match_score = round((cosine_sim + 1) * 5, 2)
                 
@@ -609,14 +651,18 @@ def get_chatbot_recommendations_logic(is_chatbot=False):
     distances = query_results['distances'][0]
     all_cand_meta = get_content_from_firestore(cand_ids)
     
-    watched_ids = set(extract_ids_from_entries(user_data.get('watchedEntries', [])))
+    interacted_ids = set(
+        extract_ids_from_entries(user_data.get('watchedEntries', [])) +
+        extract_ids_from_entries(user_data.get('favoritesEntries', [])) +
+        extract_ids_from_entries(user_data.get('watchlistEntries', []))
+    )
     final_candidates = []
     backup_candidates = []  
-    skipped = {"watched_or_missing_meta": 0, "type": 0, "year": 0, "genre": 0}
+    skipped = {"interacted_or_missing_meta": 0, "type": 0, "year": 0, "genre": 0}
 
     for i, cid in enumerate(cand_ids):
-        if cid in watched_ids or cid not in all_cand_meta:
-            skipped["watched_or_missing_meta"] += 1
+        if cid in interacted_ids or cid in excluded_ids or cid not in all_cand_meta:
+            skipped["interacted_or_missing_meta"] += 1
             continue
         cand = all_cand_meta[cid]
         
@@ -710,6 +756,7 @@ except Exception as e:
 @app.route('/api/v1/book-recommendations', methods=['GET'])
 def get_book_recommendations():
     user_id = request.args.get('userId')
+    profile_id = request.args.get('profileId')
     count_param = request.args.get('count', default=15)
     if not user_id: return jsonify({"error": "userId parametresi gerekli."}), 400
     target_count = normalize_count(count_param, 15)
@@ -720,11 +767,16 @@ def get_book_recommendations():
         if users_collection is not None:
             user_doc = users_collection.document(user_id).get()
             if not user_doc.exists: return jsonify({"status": "success", "books": []})
-            user_data = user_doc.to_dict()
+            user_data = get_recommendation_profile(user_doc.to_dict(), profile_id)
         else:
             user_data = {}
         watched_entries = user_data.get('watchedEntries', [])
         favorites_entries = user_data.get('favoritesEntries', [])
+        book_interacted_ids = set(
+            extract_book_ids_from_entries(user_data.get('booksReadEntries', [])) +
+            extract_book_ids_from_entries(user_data.get('booksWantToReadEntries', [])) +
+            extract_book_ids_from_entries(favorites_entries)
+        )
 
         loved_movie_ids = []
         for entry in favorites_entries: loved_movie_ids.append(str(entry.get('id')) if isinstance(entry, dict) else str(entry))
@@ -732,15 +784,18 @@ def get_book_recommendations():
             if isinstance(entry, dict) and float(entry.get('rating', 0)) >= 7: loved_movie_ids.append(str(entry.get('id')))
 
         if not loved_movie_ids:
-            results = book_chroma_collection.get(limit=target_count, include=['metadatas'])
+            results = book_chroma_collection.get(limit=target_count * 3, include=['metadatas'])
             books = []
             for i in range(len(results['ids'])):
+                if str(results['ids'][i]) in book_interacted_ids:
+                    continue
                 books.append({
                     "book_id": results['ids'][i], "title": results['metadatas'][i].get('title', 'Kült Kitap'),
                     "authors": results['metadatas'][i].get('authors', 'Bilinmeyen Yazar'),
                     "genre": results['metadatas'][i].get('genre', 'Genel'),
                     "image_url": results['metadatas'][i].get('image_url', ''), "match_score": 7.5
                 })
+                if len(books) >= target_count: break
             return jsonify({"status": "success", "books": books})
 
         movie_meta = get_content_from_firestore(loved_movie_ids)
@@ -755,11 +810,13 @@ def get_book_recommendations():
         if model is None:
             return service_unavailable_response("sentence_model", "Kitap önerisi için metin modeli hazır değil.")
         query_vector = model.encode(mapped_genre).tolist()
-        query_results = book_chroma_collection.query(query_embeddings=[query_vector], n_results=target_count, include=['metadatas', 'distances'])
+        query_results = book_chroma_collection.query(query_embeddings=[query_vector], n_results=target_count * 3, include=['metadatas', 'distances'])
         
         cand_ids, distances, metadatas = query_results['ids'][0], query_results['distances'][0], query_results['metadatas'][0]
         final_books = []
         for i in range(len(cand_ids)):
+            if str(cand_ids[i]) in book_interacted_ids:
+                continue
             cosine_sim = 1 - (distances[i] / 2.0)
             final_books.append({
                 "book_id": cand_ids[i], "title": metadatas[i].get('title', 'Bilinmeyen Kitap'),
@@ -767,6 +824,7 @@ def get_book_recommendations():
                 "published_year": metadatas[i].get('published_year', 'N/A'), "image_url": metadatas[i].get('image_url', ''),
                 "match_score": round((cosine_sim + 1) * 5, 2)
             })
+            if len(final_books) >= target_count: break
         return jsonify({"status": "success", "matched_genre": mapped_genre, "books": final_books})
     except Exception as e:
         traceback.print_exc()

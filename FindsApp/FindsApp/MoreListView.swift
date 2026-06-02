@@ -129,6 +129,9 @@ struct MoreListView: View {
         }
         .task { await load() }
         .refreshable { await load() }
+        .onChange(of: authVM.currentProfile?.id) { _, _ in
+            Task { await load() }
+        }
     }
 
     private func load() async {
@@ -145,23 +148,27 @@ struct MoreListView: View {
                 case .trendingMovies:
                     batch = try await service.getTrending(page: page)
                 case .suggestedMovies:
-                    if page == 1, let uid = authVM.user?.id, !uid.isEmpty {
-                        batch = try await recommendations.fetchRecommendedMovies(userID: uid)
+                    if page == 1, let uid = authVM.user?.id, !uid.isEmpty, let profileID = authVM.currentProfile?.id {
+                        batch = try await recommendations.fetchRecommendedMovies(userID: uid, profileID: profileID)
                     } else {
                         batch = [] 
                     }
                 case .trendingTV:
                     batch = try await service.getTrendingTV(page: page)
                 case .suggestedTV:
-                    if page == 1, let uid = authVM.user?.id, !uid.isEmpty {
-                        batch = try await recommendations.fetchRecommendedShows(userID: uid)
+                    if page == 1, let uid = authVM.user?.id, !uid.isEmpty, let profileID = authVM.currentProfile?.id {
+                        batch = try await recommendations.fetchRecommendedShows(userID: uid, profileID: profileID)
                     } else {
                         batch = [] 
                     }
                 case .trendingBooks:
                     batch = await BookCatalog.trendingBooks(page: page)
                 case .suggestedBooks:
-                    batch = await BookCatalog.recommendedBooks(for: authVM.user?.id, page: page, pageSize: 30)
+                    if page == 1, let uid = authVM.user?.id, !uid.isEmpty, let profileID = authVM.currentProfile?.id {
+                        batch = try await recommendations.fetchRecommendedBooks(userID: uid, profileID: profileID)
+                    } else {
+                        batch = []
+                    }
                 }
                 if batch.isEmpty { break }
                 result.append(contentsOf: batch)

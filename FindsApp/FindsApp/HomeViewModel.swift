@@ -20,7 +20,7 @@ final class HomeViewModel: ObservableObject {
         self.service = service
     }
 
-    func load(userID: String?) async {
+    func load(userID: String?, profileID: String?) async {
         guard !isLoading else { return }
         isLoading = true
         error = nil
@@ -31,17 +31,17 @@ final class HomeViewModel: ObservableObject {
 
             var recMoviesTask: Task<[Movie], Error>? = nil
             var recShowsTask: Task<[Movie], Error>? = nil
-            var recBooksTask: Task<[Movie], Never>? = nil
-            if let uid = userID, !uid.isEmpty {
-                recMoviesTask = Task { try await recommendations.fetchRecommendedMovies(userID: uid) }
-                recShowsTask = Task { try await recommendations.fetchRecommendedShows(userID: uid) }
+            var recBooksTask: Task<[Movie], Error>? = nil
+            if let uid = userID, !uid.isEmpty, let profileID, !profileID.isEmpty {
+                recMoviesTask = Task { try await recommendations.fetchRecommendedMovies(userID: uid, profileID: profileID) }
+                recShowsTask = Task { try await recommendations.fetchRecommendedShows(userID: uid, profileID: profileID) }
+                recBooksTask = Task { try await recommendations.fetchRecommendedBooks(userID: uid, profileID: profileID) }
             }
-            recBooksTask = Task { await BookCatalog.recommendedBooks(for: userID, page: 1, pageSize: 30) }
 
             let (tr, trTV, trBooks) = try await (t, tvT, booksT)
             let recMovies = try await recMoviesTask?.value ?? []
             let recShows = try await recShowsTask?.value ?? []
-            let recBooks = await recBooksTask?.value ?? []
+            let recBooks = try await recBooksTask?.value ?? []
 
             trending = tr
             trendingShows = trTV
@@ -53,5 +53,12 @@ final class HomeViewModel: ObservableObject {
             self.error = error.localizedDescription
         }
         isLoading = false
+    }
+
+    func reloadRecommendations(userID: String?, profileID: String?) async {
+        suggestions = []
+        suggestedShows = []
+        suggestedBooks = []
+        await load(userID: userID, profileID: profileID)
     }
 }

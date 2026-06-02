@@ -90,7 +90,7 @@ struct ContentView: View {
                                             .font(.footnote)
                                             .foregroundStyle(.secondary)
                                         Button("Retry") {
-                                            Task { await homeVM.load(userID: authVM.user?.id) }
+                                            Task { await homeVM.load(userID: authVM.user?.id, profileID: authVM.currentProfile?.id) }
                                         }
                                         .buttonStyle(.borderedProminent)
                                     }
@@ -172,7 +172,7 @@ struct ContentView: View {
             .navigationBarHidden(true)
             .task {
                 if homeVM.trending.isEmpty && homeVM.suggestions.isEmpty && homeVM.trendingShows.isEmpty && homeVM.suggestedShows.isEmpty && homeVM.trendingBooks.isEmpty && homeVM.suggestedBooks.isEmpty {
-                    await homeVM.load(userID: authVM.user?.id)
+                    await homeVM.load(userID: authVM.user?.id, profileID: authVM.currentProfile?.id)
                 }
                 
                 guard !onboardingChecked else { return }
@@ -191,7 +191,17 @@ struct ContentView: View {
                 }
             }
             .refreshable {
-                await homeVM.load(userID: authVM.user?.id)
+                await homeVM.load(userID: authVM.user?.id, profileID: authVM.currentProfile?.id)
+            }
+            .onChange(of: authVM.currentProfile?.id) { _, profileID in
+                Task {
+                    await homeVM.reloadRecommendations(userID: authVM.user?.id, profileID: profileID)
+                }
+            }
+            .onChange(of: authVM.listsVersion) { _, _ in
+                Task {
+                    await homeVM.reloadRecommendations(userID: authVM.user?.id, profileID: authVM.currentProfile?.id)
+                }
             }
             .fullScreenCover(isPresented: $showOnboarding) {
                 Hello()
