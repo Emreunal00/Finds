@@ -1,0 +1,90 @@
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Xcode user/workspace state (do not track user-specific metadata)
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+*.xcuserdatad/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+project.xcworkspace/xcuserdata/
+xcuserdata/
+
+# Build products
+build/
+Build/
+DerivedData/
+
+# Swift Package Manager
+.swiftpm/
+.build/
+Package.resolved
+
+# CocoaPods
+Pods/
+*.podspec.json
+
+# Carthage
+Carthage/
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/
+fastlane/test_output/
+
+# Firebase / Crashlytics
+.crashlytics/
+.crashlytics-beta/
+firebase_app_id_file.json
+GoogleService-Info.plist
+
+# Secrets and environment files
+.env
+.env.*
+Secrets.plist
+FindsApp/Secrets.plist
+*.secret
+*.secrets
+secrets/
+*.p8
+*.pem
+*.cer
+*.mobileprovision
+*.keystore
+*.jks
+
+# dSYMs and archives
+*.dSYM
+*.dSYM.zip
+*.xcarchive
+
+# SwiftGen / Sourcery generated (if used)
+Generated/
+R.generated.swift
+
+# Xcode shared data that may be user-specific
+*.xccoverage
+*.gcno
+*.gcda
+
+# Temporary files
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Simulator device data
+Library/Developer/CoreSimulator/Devices/
+
+# Preview assets cache
+*.preview-thumbnails
+*.preview-thumbnails/**
+
+# .idea / VSCode / other editors
+.idea/
+.vscode/
