@@ -63,3 +63,27 @@ extension Movie {
         normalizedMediaType == "book"
     }
 }
+
+extension Profile {
+    func shouldShowAsRecommendation(_ movie: Movie) -> Bool {
+        !hasCompletedOrFavorited(movie)
+    }
+
+    private func hasCompletedOrFavorited(_ movie: Movie) -> Bool {
+        if movie.isBook {
+            return booksReadEntries.contains { matches($0, movie: movie, type: "book") }
+                || watchedEntries.contains { matches($0, movie: movie, type: "book") }
+                || favoritesEntries.contains { matches($0, movie: movie, type: "book") }
+        }
+
+        let type = movie.normalizedMediaType
+        return watchedEntries.contains { matches($0, movie: movie, type: type) }
+            || favoritesEntries.contains { matches($0, movie: movie, type: type) }
+    }
+
+    private func matches(_ entry: WatchedEntry, movie: Movie, type: String) -> Bool {
+        guard entry.type.lowercased() == type else { return false }
+        if entry.id == movie.id { return true }
+        return movie.externalContentID != nil && entry.externalID == movie.externalContentID
+    }
+}

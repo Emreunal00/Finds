@@ -90,7 +90,7 @@ struct ContentView: View {
                                             .font(.footnote)
                                             .foregroundStyle(.secondary)
                                         Button("Retry") {
-                                            Task { await homeVM.load(userID: authVM.user?.id, profileID: authVM.currentProfile?.id) }
+                                            Task { await homeVM.load(userID: authVM.user?.id, profile: authVM.currentProfile) }
                                         }
                                         .buttonStyle(.borderedProminent)
                                     }
@@ -172,7 +172,7 @@ struct ContentView: View {
             .navigationBarHidden(true)
             .task {
                 if homeVM.trending.isEmpty && homeVM.suggestions.isEmpty && homeVM.trendingShows.isEmpty && homeVM.suggestedShows.isEmpty && homeVM.trendingBooks.isEmpty && homeVM.suggestedBooks.isEmpty {
-                    await homeVM.load(userID: authVM.user?.id, profileID: authVM.currentProfile?.id)
+                    await homeVM.load(userID: authVM.user?.id, profile: authVM.currentProfile)
                 }
                 
                 guard !onboardingChecked else { return }
@@ -191,16 +191,16 @@ struct ContentView: View {
                 }
             }
             .refreshable {
-                await homeVM.load(userID: authVM.user?.id, profileID: authVM.currentProfile?.id)
+                await homeVM.load(userID: authVM.user?.id, profile: authVM.currentProfile)
             }
-            .onChange(of: authVM.currentProfile?.id) { _, profileID in
+            .onChange(of: authVM.currentProfile?.id) { _, _ in
                 Task {
-                    await homeVM.reloadRecommendations(userID: authVM.user?.id, profileID: profileID)
+                    await homeVM.reloadRecommendations(userID: authVM.user?.id, profile: authVM.currentProfile)
                 }
             }
             .onChange(of: authVM.listsVersion) { _, _ in
                 Task {
-                    await homeVM.reloadRecommendations(userID: authVM.user?.id, profileID: authVM.currentProfile?.id)
+                    await homeVM.reloadRecommendations(userID: authVM.user?.id, profile: authVM.currentProfile)
                 }
             }
             .fullScreenCover(isPresented: $showOnboarding) {

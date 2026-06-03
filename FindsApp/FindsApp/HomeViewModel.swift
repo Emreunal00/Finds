@@ -15,13 +15,17 @@ final class HomeViewModel: ObservableObject {
 
     private let service: MovieServicing
     private let recommendations = RecommendationsService()
+    private var loadToken = 0
 
     init(service: MovieServicing = MovieService()) {
         self.service = service
     }
 
-    func load(userID: String?, profileID: String?) async {
-        guard !isLoading else { return }
+    func load(userID: String?, profile: Profile?) async {
+        loadToken &+= 1
+        let token = loadToken
+        let profileID = profile?.id
+
         isLoading = true
         error = nil
         do {
@@ -43,22 +47,31 @@ final class HomeViewModel: ObservableObject {
             let recShows = try await recShowsTask?.value ?? []
             let recBooks = try await recBooksTask?.value ?? []
 
+            guard token == loadToken else { return }
+
             trending = tr
             trendingShows = trTV
             trendingBooks = trBooks
-            suggestions = recMovies
-            suggestedShows = recShows
-            suggestedBooks = recBooks
+            suggestions = Self.visibleRecommendations(recMovies, for: profile)
+            suggestedShows = Self.visibleRecommendations(recShows, for: profile)
+            suggestedBooks = Self.visibleRecommendations(recBooks, for: profile)
+            isLoading = false
         } catch {
+            guard token == loadToken else { return }
             self.error = error.localizedDescription
+            isLoading = false
         }
-        isLoading = false
     }
 
-    func reloadRecommendations(userID: String?, profileID: String?) async {
+    func reloadRecommendations(userID: String?, profile: Profile?) async {
         suggestions = []
         suggestedShows = []
         suggestedBooks = []
-        await load(userID: userID, profileID: profileID)
+        await load(userID: userID, profile: profile)
+    }
+
+    private static func visibleRecommendations(_ movies: [Movie], for profile: Profile?) -> [Movie] {
+        guard let profile else { return movies }
+        return movies.filter { profile.shouldShowAsRecommendation($0) }
     }
 }

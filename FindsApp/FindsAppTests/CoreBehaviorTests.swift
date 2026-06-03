@@ -44,6 +44,31 @@ struct CoreModelBehaviorTests {
         #expect(profile.booksWantToReadEntries == [wantToRead])
     }
 
+    @Test("Recommendations hide only current profile completed and favorite items")
+    func recommendationsHideOnlyCurrentProfileCompletedAndFavoriteItems() {
+        let currentProfile = Profile(
+            id: "profile-1",
+            watchedEntries: [WatchedEntry(id: 10, type: "movie")],
+            favoritesEntries: [WatchedEntry(id: 20, type: "tv")],
+            booksReadEntries: [WatchedEntry(id: 30, type: "book", externalID: "book-30")]
+        )
+        let otherProfile = Profile(
+            id: "profile-2",
+            watchedEntries: [WatchedEntry(id: 40, type: "movie")]
+        )
+
+        let watchedMovie = Movie(id: 10, title: "Watched", year: 2020, mediaType: "movie")
+        let favoriteShow = Movie(id: 20, title: "Favorite", year: 2020, mediaType: "tv")
+        let readBook = Movie(id: 999, title: "Read", year: 2020, mediaType: "book", externalContentID: "book-30")
+        let otherProfileMovie = Movie(id: 40, title: "Other", year: 2020, mediaType: "movie")
+
+        #expect(currentProfile.shouldShowAsRecommendation(watchedMovie) == false)
+        #expect(currentProfile.shouldShowAsRecommendation(favoriteShow) == false)
+        #expect(currentProfile.shouldShowAsRecommendation(readBook) == false)
+        #expect(currentProfile.shouldShowAsRecommendation(otherProfileMovie))
+        #expect(otherProfile.shouldShowAsRecommendation(watchedMovie))
+    }
+
     @Test("BookCatalog symbol matches content type")
     func bookCatalogSymbolMatchesContentType() {
         let book = Movie(id: 1, title: "Book", year: 2020, mediaType: "book")

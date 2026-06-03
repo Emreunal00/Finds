@@ -48,6 +48,15 @@ struct MoreListView: View {
             case .suggestedBooks: return "Recommended books"
             }
         }
+
+        var isSuggested: Bool {
+            switch self {
+            case .suggestedMovies, .suggestedTV, .suggestedBooks:
+                return true
+            case .trendingMovies, .trendingTV, .trendingBooks:
+                return false
+            }
+        }
     }
 
     enum SortOption: String, CaseIterable, Identifiable {
@@ -175,6 +184,9 @@ struct MoreListView: View {
                 page += 1
             }
             if result.count > 250 { result = Array(result.prefix(250)) }
+            if kind.isSuggested, let profile = authVM.currentProfile {
+                result = result.filter { profile.shouldShowAsRecommendation($0) }
+            }
             movies = result
         } catch {
             errorMessage = error.localizedDescription
