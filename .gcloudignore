@@ -1,0 +1,13 @@
+.git
+.gitignore
+README.md
+*.pyc
+__pycache__/
+venv/
+.env
+.gradle/
+android/
+ios/
+build/
+target/
+node_modules/
